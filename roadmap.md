@@ -14,6 +14,9 @@ It will say Enter commit message so tell it what you have done that session and 
 
 
 ## Phase 2 — Basic App (Nano only, balances only)
+to get claude to remember what's going on type https://raw.githubusercontent.com/meldrino/meldrino/main/roadmap.md (into claude)
+
+
 Build the home screen with a single coin (Nano / XNO). This phase is deceptively large — every design and layout decision made here sets the pattern for the entire app.
 
 **Home screen layout:** Each row displays one holding in the following column order:
