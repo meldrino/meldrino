@@ -1,4 +1,4 @@
-# Meldrino
+# Meldrino Wallet
 
 > **A universal crypto portfolio tracker for every chain, every wallet, every ecosystem.**
 
@@ -19,7 +19,7 @@ Both **meldrino.com** and **meldrinowallet.com** have been confirmed unregistere
 
 ## The Concept
 
-A publicly available mobile app (Flutter — iOS & Android) that allows any user to enter their wallet addresses across multiple blockchains and see a unified dashboard of their entire crypto portfolio — including assets from blockchains that are architecturally incompatible with each other.
+A publicly available mobile app (Flutter — iOS & Android) that allows any user to enter their wallet addresses across multiple blockchains and see a unified dashboard of their entire crypto portfolio — including assets from blockchains that are architecturally incompatible with each other. It will also include NFTs providing a central place for users to view their collections, even those on non=standard blockchains such as nano. 
 
 ---
 
@@ -27,7 +27,7 @@ A publicly available mobile app (Flutter — iOS & Android) that allows any user
 
 Existing apps (Zerion, DeBank, Zapper, CoinStats, Delta) are predominantly EVM-focused. Non-EVM chains like Nano are ignored, and cross-ecosystem NFT support is essentially nonexistent. Meldrino fills that gap.
 
-Even at MVP stage, Meldrino will surpass all existing portfolio trackers in breadth of support.
+Even at MVP (minimum viable product) stage, Meldrino will surpass all existing portfolio trackers in breadth of support.
 
 ---
 
