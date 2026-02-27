@@ -139,10 +139,13 @@ At the end of each session:
 
 ## Project Status
 
-**Current stage:** Pre-development — concept fully defined, name confirmed, repository established.
+**Current stage:** Development environment complete — ready to begin coding.
+
+**Completed:**
+- Flutter development environment set up on founder's Windows machine
+- GitHub repository connected with version control active
+- PowerShell sync script created and tested — single command pushes all changes to GitHub
 
 **Next steps:**
 1. Finalise outstanding decisions above
-2. Set up Flutter development environment on founder's Windows machine
-3. Create PowerShell sync script
-4. Begin Flutter project structure
+2. Build Phase 2 — home screen with Nano coin row
