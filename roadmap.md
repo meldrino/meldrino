@@ -9,6 +9,10 @@ Set up all tools needed to build and manage the project:
 - **GitHub repository** — already created at github.com/meldrino/meldrino
 - **PowerShell sync script** — run at the end of each session to commit and push all project files to GitHub; prompts the founder for a brief description which becomes the commit message
 
+- phase one complete. to fire the powershell synch script type cd C:\meldrino_app; .\commit.ps1
+It will say Enter commit message so tell it what you have done that session and it will upload
+
+
 ## Phase 2 — Basic App (Nano only, balances only)
 Build the home screen with a single coin (Nano / XNO). This phase is deceptively large — every design and layout decision made here sets the pattern for the entire app.
 
