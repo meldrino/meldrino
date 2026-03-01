@@ -1,4 +1,4 @@
-package com.example.meldrino_app
+package com.meldrino.app
 
 import io.flutter.embedding.android.FlutterActivity
 
