@@ -17,3 +17,6 @@ nano_service.dart
 price_service.dart
 settings_screen.dart
 currently not all the top menu items are appearing. 
+
+in settings we will want to be able to change the fiat currency (usd, gbp and euro in the first instance)
+in wallet we will want add remove and edit wallet
