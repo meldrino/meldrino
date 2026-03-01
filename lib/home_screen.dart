@@ -3,9 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
 import 'nano_service.dart';
 import 'price_service.dart';
+import 'zbd_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
-import 'zbd_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,12 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _fiatSymbol(String currency) {
     switch (currency) {
-      case 'GBP':
-        return '£';
-      case 'EUR':
-        return '€';
-      default:
-        return '\$';
+      case 'GBP': return '£';
+      case 'EUR': return '€';
+      default: return '\$';
     }
   }
 
@@ -51,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final btcPrice = prices['btc'] ?? 0;
       final List<CoinHolding> holdings = [];
 
-      // Load Nano wallets
+      // Nano wallets
       for (final w in wallets) {
         final parts = w.split('|');
         final coin = parts[0];
@@ -73,24 +70,25 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // Load ZBD balance if connected
+      // ZBD wallet (Bitcoin sats)
       final zbdToken = await ZbdService.getStoredToken();
       if (zbdToken != null) {
         try {
           final sats = await ZbdService.getBalanceSats();
           final username = await ZbdService.getUsername();
+          final btcBalance = sats / 100000000; // sats to BTC
           holdings.add(CoinHolding(
-            name: 'Bitcoin Lightning',
-            ticker: 'SATS',
-            wallet: 'ZBD (@$username)',
+            name: 'Bitcoin (ZBD)',
+            ticker: 'BTC',
+            wallet: '@$username',
             address: '',
-            balance: sats.toDouble(),
-            priceUsd: btcPrice / 100000000,
+            balance: btcBalance,
+            priceUsd: btcPrice,
             fiatCurrency: fiatCurrency,
             fiatSymbol: symbol,
           ));
         } catch (e) {
-          // ZBD token may have expired - silently skip, user can reconnect
+          // Token may have expired — silently skip, user can reconnect from wallets screen
         }
       }
 
@@ -135,24 +133,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Divider(height: 1, color: Color(0xFF2A2A4A)),
                       itemBuilder: (context, index) {
                         final coin = _holdings[index];
+                        final isZbd = coin.ticker == 'BTC';
                         return ListTile(
-                          onTap: () {
-                            if (coin.ticker != 'SATS') {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      CoinDetailScreen(holding: coin),
-                                ),
-                              );
-                            }
-                          },
+                          onTap: isZbd
+                              ? null // ZBD detail screen not yet built
+                              : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          CoinDetailScreen(holding: coin),
+                                    ),
+                                  ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           leading: CircleAvatar(
                             backgroundColor: const Color(0xFF2A2A4A),
                             child: Text(
-                              coin.ticker == 'SATS' ? '₿' : 'N',
+                              isZbd ? '₿' : 'N',
                               style: const TextStyle(
                                   color: Colors.tealAccent,
                                   fontWeight: FontWeight.bold),
@@ -175,8 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16)),
                               Text(
-                                  coin.ticker == 'SATS'
-                                      ? '${coin.balance.toStringAsFixed(0)} sats'
+                                  isZbd
+                                      ? '${(coin.balance * 100000000).toStringAsFixed(0)} sats'
                                       : '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
                                   style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
