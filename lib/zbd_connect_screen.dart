@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'zbd_service.dart';
 
 class ZbdConnectScreen extends StatefulWidget {
@@ -57,6 +57,13 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     });
   }
 
+  Future<void> _openZbd() async {
+    if (_qrHash == null) return;
+    final url = Uri.parse(
+        'https://zebedee.io/qrauth/$_qrHash?QRCodeZClient=browser-extension');
+    await launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
@@ -84,7 +91,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     if (_authenticated) return _buildSuccess();
     if (_error != null) return _buildError();
     if (_previewUsername != null) return _buildUserPreview();
-    if (_qrHash != null) return _buildQrCode();
+    if (_qrHash != null) return _buildConnectPrompt();
     return _buildConnecting();
   }
 
@@ -101,75 +108,62 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     );
   }
 
-  Widget _buildQrCode() {
-    final qrData =
-        'https://zebedee.io/qrauth/$_qrHash?QRCodeZClient=browser-extension';
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          const Text('Connect your ZBD wallet',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          _buildStep('1', 'Screenshot this QR code'),
-          const SizedBox(height: 10),
-          _buildStep('2', 'Open your ZBD app'),
-          const SizedBox(height: 10),
-          _buildStep('3', 'Tap the scan icon and choose your camera roll'),
-          const SizedBox(height: 10),
-          _buildStep('4', 'Select the screenshot and tap Approve'),
-          const SizedBox(height: 28),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: QrImageView(
-              data: qrData,
-              version: QrVersions.auto,
-              size: 220,
-              backgroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.tealAccent),
-              ),
-              const SizedBox(width: 10),
-              Text('Waiting for approval...',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.4), fontSize: 13)),
-            ],
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStep(String number, String text) {
-    return Row(
+  Widget _buildConnectPrompt() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        CircleAvatar(
-          radius: 14,
-          backgroundColor: Colors.tealAccent,
-          child: Text(number,
-              style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13)),
+        const CircleAvatar(
+          radius: 36,
+          backgroundColor: Color(0xFF2A2A4A),
+          child: Text('Z',
+              style: TextStyle(
+                  fontSize: 32,
+                  color: Colors.tealAccent,
+                  fontWeight: FontWeight.bold)),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 15)),
+        const SizedBox(height: 28),
+        const Text('Connect your ZBD wallet',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        Text(
+          'Tap below to open the ZBD app and approve the connection.',
+          style: TextStyle(
+              color: Colors.white.withOpacity(0.55), fontSize: 14),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 36),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _openZbd,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.tealAccent,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+            child: const Text('Approve in ZBD',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+          ),
+        ),
+        const SizedBox(height: 36),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.tealAccent),
+            ),
+            const SizedBox(width: 10),
+            Text('Waiting for approval...',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.4), fontSize: 13)),
+          ],
         ),
       ],
     );
@@ -238,7 +232,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.tealAccent,
             foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12)),
           ),
