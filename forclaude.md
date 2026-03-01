@@ -1,4 +1,4 @@
-https://raw.githubusercontent.com/meldrino/meldrino/main/for claude.md
+https://raw.githubusercontent.com/meldrino/meldrino/main/forclaude.md
 
 
 We are working on a project together that you have forgotten all about. 
@@ -17,6 +17,8 @@ nano_service.dart
 price_service.dart
 settings_screen.dart
 currently not all the top menu items are appearing. 
+
+the Nanswap API key is in the nano_service.dart
 
 in settings we will want to be able to change the fiat currency (usd, gbp and euro in the first instance)
 in wallet we will want add remove and edit wallet
