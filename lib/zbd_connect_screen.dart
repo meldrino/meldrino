@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 import 'zbd_service.dart';
 
 class ZbdConnectScreen extends StatefulWidget {
@@ -12,25 +12,25 @@ class ZbdConnectScreen extends StatefulWidget {
 }
 
 class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
-  String? _qrHash;
   String? _previewUsername;
   String? _previewImage;
   String? _error;
   bool _authenticated = false;
+  bool _waiting = false;
   StreamSubscription? _sub;
 
   @override
-  void initState() {
-    super.initState();
-    _startFlow();
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
-  void _startFlow() {
+  void _startListening() {
     setState(() {
-      _qrHash = null;
+      _waiting = true;
+      _error = null;
       _previewUsername = null;
       _previewImage = null;
-      _error = null;
       _authenticated = false;
     });
 
@@ -40,7 +40,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
       final type = event['type'];
 
       if (type == 'qr_hash') {
-        setState(() => _qrHash = event['data']);
+        // Hash received, WebSocket is ready and listening
+        // Nothing to display for this — we just wait
       } else if (type == 'user_preview') {
         setState(() {
           _previewUsername = event['username'];
@@ -52,22 +53,12 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
           if (mounted) widget.onConnected();
         });
       } else if (type == 'error') {
-        setState(() => _error = event['message']);
+        setState(() {
+          _error = event['message'];
+          _waiting = false;
+        });
       }
     });
-  }
-
-  Future<void> _openZbd() async {
-    if (_qrHash == null) return;
-    final url = Uri.parse(
-        'https://zebedee.io/qrauth/$_qrHash?QRCodeZClient=browser-extension');
-    await launchUrl(url, mode: LaunchMode.externalApplication);
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
   }
 
   @override
@@ -91,24 +82,11 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     if (_authenticated) return _buildSuccess();
     if (_error != null) return _buildError();
     if (_previewUsername != null) return _buildUserPreview();
-    if (_qrHash != null) return _buildConnectPrompt();
-    return _buildConnecting();
+    if (_waiting) return _buildWaiting();
+    return _buildInstructions();
   }
 
-  Widget _buildConnecting() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: Colors.tealAccent),
-          SizedBox(height: 20),
-          Text('Connecting to ZBD...', style: TextStyle(fontSize: 16)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConnectPrompt() {
+  Widget _buildInstructions() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -125,45 +103,102 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
         const Text('Connect your ZBD wallet',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        Text(
-          'Tap below to open the ZBD app and approve the connection.',
-          style: TextStyle(
-              color: Colors.white.withOpacity(0.55), fontSize: 14),
-          textAlign: TextAlign.center,
+        const SizedBox(height: 28),
+        _buildStep('1', 'On your PC, go to:'),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: () {
+            Clipboard.setData(const ClipboardData(
+                text: 'https://browser-extension.zebedee.io'));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('URL copied')),
+            );
+          },
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF16213E),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.tealAccent.withOpacity(0.4)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('browser-extension.zebedee.io',
+                    style: TextStyle(
+                        color: Colors.tealAccent,
+                        fontFamily: 'monospace',
+                        fontSize: 13)),
+                Icon(Icons.copy,
+                    color: Colors.tealAccent.withOpacity(0.6), size: 18),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 36),
+        const SizedBox(height: 16),
+        _buildStep('2', 'Scan the QR code shown there using your ZBD app'),
+        const SizedBox(height: 12),
+        _buildStep('3', 'Tap Connect in your ZBD app'),
+        const SizedBox(height: 12),
+        _buildStep('4', 'Tap the button below — Meldrino will wait for the connection'),
+        const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _openZbd,
+            onPressed: _startListening,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.tealAccent,
               foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            child: const Text('Approve in ZBD',
+            child: const Text('Ready — connect now',
                 style:
-                    TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
         ),
-        const SizedBox(height: 36),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.tealAccent),
-            ),
-            const SizedBox(width: 10),
-            Text('Waiting for approval...',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.4), fontSize: 13)),
-          ],
+      ],
+    );
+  }
+
+  Widget _buildStep(String number, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 13,
+          backgroundColor: Colors.tealAccent,
+          child: Text(number,
+              style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(fontSize: 14)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWaiting() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const CircularProgressIndicator(color: Colors.tealAccent),
+        const SizedBox(height: 24),
+        const Text('Waiting for ZBD connection...',
+            style: TextStyle(fontSize: 16), textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        Text(
+          'Scan the QR at browser-extension.zebedee.io with your ZBD app and tap Connect.',
+          style:
+              TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -228,7 +263,10 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
             textAlign: TextAlign.center),
         const SizedBox(height: 24),
         ElevatedButton(
-          onPressed: _startFlow,
+          onPressed: () => setState(() {
+            _error = null;
+            _waiting = false;
+          }),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.tealAccent,
             foregroundColor: Colors.black,
