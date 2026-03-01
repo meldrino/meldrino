@@ -20,4 +20,4 @@ https://raw.githubusercontent.com/meldrino/meldrino/main/price_service.dart
 
 the Nanswap API key is in the nano_service.dart
 
-in wallet we will want add remove and edit wallet
+in wallet we will want add remove and edit wallet'
