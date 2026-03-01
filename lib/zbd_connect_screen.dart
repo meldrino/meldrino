@@ -102,6 +102,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
   }
 
   Widget _buildQrCode() {
+    final qrData =
+        'https://zebedee.io/qrauth/$_qrHash?QRCodeZClient=browser-extension';
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -125,7 +127,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: QrImageView(
-              data: _qrHash!,
+              data: qrData,
               version: QrVersions.auto,
               size: 220,
               backgroundColor: Colors.white,
@@ -191,8 +193,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
                 color: Colors.tealAccent)),
         const SizedBox(height: 8),
         Text('Authorising...',
-            style:
-                TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14)),
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.5), fontSize: 14)),
         const SizedBox(height: 24),
         const CircularProgressIndicator(color: Colors.tealAccent),
       ],
@@ -237,8 +239,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
             backgroundColor: Colors.tealAccent,
             foregroundColor: Colors.black,
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
           ),
           child: const Text('Try Again',
               style: TextStyle(fontWeight: FontWeight.bold)),
