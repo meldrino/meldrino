@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'zbd_service.dart';
 
 class ZbdConnectScreen extends StatefulWidget {
@@ -18,7 +17,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
   String? _previewImage;
   String? _error;
   bool _authenticated = false;
-  bool _copied = false;
   StreamSubscription? _sub;
 
   @override
@@ -34,7 +32,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
       _previewImage = null;
       _error = null;
       _authenticated = false;
-      _copied = false;
     });
 
     _sub?.cancel();
@@ -60,33 +57,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     });
   }
 
-  Future<void> _openZbdApp() async {
-    if (_qrHash == null) return;
-
-    // Try ZBD's browser-extension URL — ZBD app is registered to handle this domain
-    final uri = Uri.parse(
-        'https://browser-extension.zebedee.io/?hash=${Uri.encodeComponent(_qrHash!)}');
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      // Fallback: open ZBD app store page if ZBD isn't installed
-      await launchUrl(
-        Uri.parse(
-            'https://play.google.com/store/apps/details?id=io.zebedee.android'),
-        mode: LaunchMode.externalApplication,
-      );
-    }
-  }
-
-  void _copyHash() {
-    if (_qrHash == null) return;
-    Clipboard.setData(ClipboardData(text: _qrHash!));
-    setState(() => _copied = true);
-    Future.delayed(const Duration(seconds: 2),
-        () => mounted ? setState(() => _copied = false) : null);
-  }
-
   @override
   void dispose() {
     _sub?.cancel();
@@ -100,8 +70,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: const Text('Connect ZBD',
-            style:
-                TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+            style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
         elevation: 0,
       ),
       body: Padding(
@@ -115,7 +84,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     if (_authenticated) return _buildSuccess();
     if (_error != null) return _buildError();
     if (_previewUsername != null) return _buildUserPreview();
-    if (_qrHash != null) return _buildConnectPrompt();
+    if (_qrHash != null) return _buildQrCode();
     return _buildConnecting();
   }
 
@@ -132,84 +101,73 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     );
   }
 
-  Widget _buildConnectPrompt() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildQrCode() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          const Text('Connect your ZBD wallet',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 24),
+          _buildStep('1', 'Screenshot this QR code'),
+          const SizedBox(height: 10),
+          _buildStep('2', 'Open your ZBD app'),
+          const SizedBox(height: 10),
+          _buildStep('3', 'Tap the scan icon and choose your camera roll'),
+          const SizedBox(height: 10),
+          _buildStep('4', 'Select the screenshot and tap Approve'),
+          const SizedBox(height: 28),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: QrImageView(
+              data: _qrHash!,
+              version: QrVersions.auto,
+              size: 220,
+              backgroundColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.tealAccent),
+              ),
+              const SizedBox(width: 10),
+              Text('Waiting for approval...',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.4), fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep(String number, String text) {
+    return Row(
       children: [
-        const CircleAvatar(
-          radius: 36,
-          backgroundColor: Color(0xFF2A2A4A),
-          child: Text('Z',
-              style: TextStyle(
-                  fontSize: 32,
-                  color: Colors.tealAccent,
-                  fontWeight: FontWeight.bold)),
+        CircleAvatar(
+          radius: 14,
+          backgroundColor: Colors.tealAccent,
+          child: Text(number,
+              style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13)),
         ),
-        const SizedBox(height: 24),
-        const Text('Connect your ZBD wallet',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        Text(
-          'Tap the button below to open the ZBD app and authorise Meldrino.',
-          style:
-              TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 14),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _openZbdApp,
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Open ZBD App',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.tealAccent,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'After tapping Approve in ZBD, return here.',
-          style:
-              TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 32),
-        // Fallback for power users / if deep link doesn't work
-        TextButton.icon(
-          onPressed: _copyHash,
-          icon: Icon(
-            _copied ? Icons.check : Icons.copy,
-            size: 16,
-            color: Colors.tealAccent,
-          ),
-          label: Text(
-            _copied ? 'Copied!' : 'Copy connection code instead',
-            style:
-                const TextStyle(color: Colors.tealAccent, fontSize: 13),
-          ),
-        ),
-        const SizedBox(height: 32),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.tealAccent),
-            ),
-            const SizedBox(width: 10),
-            Text('Waiting for approval...',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.4), fontSize: 13)),
-          ],
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontSize: 15)),
         ),
       ],
     );
@@ -233,8 +191,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
                 color: Colors.tealAccent)),
         const SizedBox(height: 8),
         Text('Authorising...',
-            style: TextStyle(
-                color: Colors.white.withOpacity(0.5), fontSize: 14)),
+            style:
+                TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14)),
         const SizedBox(height: 24),
         const CircularProgressIndicator(color: Colors.tealAccent),
       ],
@@ -278,10 +236,9 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.tealAccent,
             foregroundColor: Colors.black,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           child: const Text('Try Again',
               style: TextStyle(fontWeight: FontWeight.bold)),
