@@ -59,7 +59,7 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
   Widget build(BuildContext context) {
     final holding = widget.holding;
     return Scaffold(
-      appBar: MeldrinoAppBar(onRefresh: () {}),
+      appBar: MeldrinoAppBar(onRefresh: () {}, showHome: true),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -145,8 +145,7 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
           ),
           const SizedBox(height: 24),
           const Text('Recent Transactions',
-              style:
-                  TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           if (_loadingHistory)
             const Center(child: CircularProgressIndicator())

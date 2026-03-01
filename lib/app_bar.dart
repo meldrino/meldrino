@@ -5,11 +5,13 @@ import 'settings_screen.dart';
 class MeldrinoAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onRefresh;
   final bool showRefresh;
+  final bool showHome;
 
   const MeldrinoAppBar({
     super.key,
     required this.onRefresh,
     this.showRefresh = false,
+    this.showHome = false,
   });
 
   @override
@@ -27,6 +29,12 @@ class MeldrinoAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       actions: [
+        if (showHome)
+          IconButton(
+            icon: const Icon(Icons.home_outlined),
+            tooltip: 'Home',
+            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+          ),
         if (showRefresh)
           IconButton(
             icon: const Icon(Icons.refresh),
