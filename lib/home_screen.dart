@@ -5,6 +5,7 @@ import 'nano_service.dart';
 import 'price_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
+import 'zbd_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,9 +27,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _fiatSymbol(String currency) {
     switch (currency) {
-      case 'GBP': return '£';
-      case 'EUR': return '€';
-      default: return '\$';
+      case 'GBP':
+        return '£';
+      case 'EUR':
+        return '€';
+      default:
+        return '\$';
     }
   }
 
@@ -41,10 +45,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final wallets = prefs.getStringList('wallets') ?? [];
       final fiatCurrency = prefs.getString('fiatCurrency') ?? 'USD';
+      final symbol = _fiatSymbol(fiatCurrency);
       final prices = await PriceService.getPrices(fiatCurrency);
       final xnoPrice = prices['xno'] ?? 0;
+      final btcPrice = prices['btc'] ?? 0;
       final List<CoinHolding> holdings = [];
 
+      // Load Nano wallets
       for (final w in wallets) {
         final parts = w.split('|');
         final coin = parts[0];
@@ -61,8 +68,29 @@ class _HomeScreenState extends State<HomeScreen> {
             balance: balance,
             priceUsd: xnoPrice,
             fiatCurrency: fiatCurrency,
-            fiatSymbol: _fiatSymbol(fiatCurrency),
+            fiatSymbol: symbol,
           ));
+        }
+      }
+
+      // Load ZBD balance if connected
+      final zbdToken = await ZbdService.getStoredToken();
+      if (zbdToken != null) {
+        try {
+          final sats = await ZbdService.getBalanceSats();
+          final username = await ZbdService.getUsername();
+          holdings.add(CoinHolding(
+            name: 'Bitcoin Lightning',
+            ticker: 'SATS',
+            wallet: 'ZBD (@$username)',
+            address: '',
+            balance: sats.toDouble(),
+            priceUsd: btcPrice / 100000000,
+            fiatCurrency: fiatCurrency,
+            fiatSymbol: symbol,
+          ));
+        } catch (e) {
+          // ZBD token may have expired - silently skip, user can reconnect
         }
       }
 
@@ -108,26 +136,31 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (context, index) {
                         final coin = _holdings[index];
                         return ListTile(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  CoinDetailScreen(holding: coin),
-                            ),
-                          ),
+                          onTap: () {
+                            if (coin.ticker != 'SATS') {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      CoinDetailScreen(holding: coin),
+                                ),
+                              );
+                            }
+                          },
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
-                          leading: const CircleAvatar(
-                            backgroundColor: Color(0xFF2A2A4A),
-                            child: Text('N',
-                                style: TextStyle(
-                                    color: Colors.tealAccent,
-                                    fontWeight: FontWeight.bold)),
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFF2A2A4A),
+                            child: Text(
+                              coin.ticker == 'SATS' ? '₿' : 'N',
+                              style: const TextStyle(
+                                  color: Colors.tealAccent,
+                                  fontWeight: FontWeight.bold),
+                            ),
                           ),
                           title: Text(coin.name,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16)),
+                                  fontWeight: FontWeight.w600, fontSize: 16)),
                           subtitle: Text(coin.wallet,
                               style: TextStyle(
                                   color: Colors.white.withOpacity(0.5),
@@ -142,7 +175,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16)),
                               Text(
-                                  '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
+                                  coin.ticker == 'SATS'
+                                      ? '${coin.balance.toStringAsFixed(0)} sats'
+                                      : '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
                                   style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
                                       fontSize: 13)),

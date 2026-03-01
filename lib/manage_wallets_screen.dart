@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_bar.dart';
 import 'home_screen.dart';
+import 'zbd_service.dart';
+import 'zbd_connect_screen.dart';
 
 class ManageWalletsScreen extends StatefulWidget {
   final bool isFirstTime;
@@ -17,11 +19,18 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   final _labelController = TextEditingController();
   String _selectedCoin = 'Nano (XNO)';
   final List<String> _supportedCoins = ['Nano (XNO)'];
+  bool _zbdConnected = false;
 
   @override
   void initState() {
     super.initState();
     _loadWallets();
+    _checkZbd();
+  }
+
+  Future<void> _checkZbd() async {
+    final token = await ZbdService.getStoredToken();
+    setState(() => _zbdConnected = token != null);
   }
 
   Future<void> _loadWallets() async {
@@ -127,6 +136,34 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     );
   }
 
+  Future<void> _disconnectZbd() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Disconnect ZBD?'),
+        content: const Text(
+            'Your ZBD balance will no longer appear in Meldrino. You can reconnect at any time.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Disconnect',
+                style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ZbdService.clearToken();
+      setState(() => _zbdConnected = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -145,8 +182,7 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
           children: [
             if (widget.isFirstTime) ...[
               const Text('Welcome to Meldrino',
-                  style:
-                      TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Text(
                 'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
@@ -155,6 +191,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
               ),
               const SizedBox(height: 24),
             ],
+
+            // Add Nano wallet section
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -165,8 +203,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Add Wallet',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _selectedCoin,
@@ -188,8 +226,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _addressController,
-                    decoration: const InputDecoration(
-                        labelText: 'Wallet Address'),
+                    decoration:
+                        const InputDecoration(labelText: 'Wallet Address'),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -199,8 +237,7 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.tealAccent,
                         foregroundColor: Colors.black,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
@@ -211,11 +248,85 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 16),
+
+            // ZBD section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16213E),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: Color(0xFF2A2A4A),
+                    child: Text('₿',
+                        style: TextStyle(
+                            color: Colors.tealAccent,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('ZBD (Bitcoin Lightning)',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 15)),
+                        Text(
+                          _zbdConnected ? 'Connected' : 'Not connected',
+                          style: TextStyle(
+                              color: _zbdConnected
+                                  ? Colors.tealAccent
+                                  : Colors.white.withOpacity(0.4),
+                              fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _zbdConnected
+                      ? TextButton(
+                          onPressed: _disconnectZbd,
+                          child: const Text('Disconnect',
+                              style: TextStyle(color: Colors.redAccent)),
+                        )
+                      : ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ZbdConnectScreen(
+                                  onConnected: () {
+                                    Navigator.pop(context);
+                                    setState(() => _zbdConnected = true);
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.tealAccent,
+                            foregroundColor: Colors.black,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Connect',
+                              style:
+                                  TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 24),
+
+            // Saved wallets list
             if (_wallets.isNotEmpty) ...[
               const Text('Saved Wallets',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Expanded(
                 child: ListView.separated(
@@ -225,8 +336,7 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                   itemBuilder: (context, index) {
                     final parts = _wallets[index].split('|');
                     final coin = parts[0];
-                    final label =
-                        parts[1].isNotEmpty ? parts[1] : coin;
+                    final label = parts[1].isNotEmpty ? parts[1] : coin;
                     final address = parts[2];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
