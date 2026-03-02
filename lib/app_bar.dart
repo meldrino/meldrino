@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'manage_wallets_screen.dart';
 import 'settings_screen.dart';
+import 'home_screen.dart';
 
 class MeldrinoAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onRefresh;
   final bool showRefresh;
-  final bool showHome;
 
   const MeldrinoAppBar({
     super.key,
     required this.onRefresh,
     this.showRefresh = false,
-    this.showHome = false,
   });
 
   @override
@@ -21,26 +20,27 @@ class MeldrinoAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       automaticallyImplyLeading: false,
-      title: GestureDetector(
-        onTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
-        child: const Text(
-          'Meldrino',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
-        ),
+      title: const Text(
+        'Meldrino',
+        style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
       ),
+      // Note: title is NOT tappable — use the home icon instead
       actions: [
-        if (showHome)
-          IconButton(
-            icon: const Icon(Icons.home_outlined),
-            tooltip: 'Home',
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-          ),
         if (showRefresh)
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: onRefresh,
             tooltip: 'Refresh balances',
           ),
+        IconButton(
+          icon: const Icon(Icons.home_outlined),
+          tooltip: 'Home',
+          onPressed: () => Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (route) => false,
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.account_balance_wallet_outlined),
           tooltip: 'Manage wallets',
