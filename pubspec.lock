@@ -86,6 +86,30 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_device_apps:
+    dependency: "direct main"
+    description:
+      name: flutter_device_apps
+      sha256: "4aab966353908ebbd0b5cd0a54c9b86637e4bdcafaf8f70ceea9d2cd27ff667a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
+  flutter_device_apps_android:
+    dependency: transitive
+    description:
+      name: flutter_device_apps_android
+      sha256: acb0932205de71528c8b754a082ae1bcb20a5fbf8a2e4c7bbde77e08bd201b6e
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
+  flutter_device_apps_platform_interface:
+    dependency: transitive
+    description:
+      name: flutter_device_apps_platform_interface
+      sha256: "2deba5ffc1c2f300579b4086f40456f9886f6af546cae0e6a5f9494d484ce6e2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -224,22 +248,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
-  qr:
-    dependency: transitive
-    description:
-      name: qr
-      sha256: "5a1d2586170e172b8a8c8470bbbffd5eb0cd38a66c0d77155ea138d3af3a4445"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.2"
-  qr_flutter:
-    dependency: "direct main"
-    description:
-      name: qr_flutter
-      sha256: "5095f0fc6e3f71d08adef8feccc8cea4f12eec18a2e31c2e8d82cb6019f4b097"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.1.0"
   shared_preferences:
     dependency: "direct main"
     description:

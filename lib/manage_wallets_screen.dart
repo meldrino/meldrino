@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_bar.dart';
 import 'home_screen.dart';
-import 'zbd_service.dart';
+import 'wallet_registry.dart';
+import 'wallet_detector.dart';
+import 'zbd_connect_screen.dart';
 import 'zbd_connect_screen.dart';
 
 class ManageWalletsScreen extends StatefulWidget {
@@ -15,18 +18,14 @@ class ManageWalletsScreen extends StatefulWidget {
 
 class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   List<String> _wallets = [];
-  bool _zbdConnected = false;
-  String? _zbdUsername;
-  final _addressController = TextEditingController();
-  final _labelController = TextEditingController();
-  String _selectedCoin = 'Nano (XNO)';
-  final List<String> _supportedCoins = ['Nano (XNO)'];
+  List<WalletDefinition> _installedWallets = [];
+  bool _scanning = true;
 
   @override
   void initState() {
     super.initState();
     _loadWallets();
-    _checkZbd();
+    _scanForWallets();
   }
 
   Future<void> _loadWallets() async {
@@ -36,94 +35,13 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     });
   }
 
-  Future<void> _checkZbd() async {
-    final token = await ZbdService.getStoredToken();
-    if (token != null) {
-      try {
-        final username = await ZbdService.getUsername();
-        if (mounted) {
-          setState(() {
-            _zbdConnected = true;
-            _zbdUsername = username;
-          });
-        }
-      } catch (_) {
-        await ZbdService.clearToken();
-      }
-    }
-  }
-
-  Future<void> _connectZbd() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ZbdConnectScreen(
-          onConnected: () async {
-            Navigator.pop(context);
-            await _checkZbd();
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _disconnectZbd() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('Disconnect ZBD?'),
-        content: const Text(
-            'Your ZBD balance will be removed from Meldrino. You can reconnect at any time.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Disconnect',
-                style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ZbdService.clearToken();
-      setState(() {
-        _zbdConnected = false;
-        _zbdUsername = null;
-      });
-    }
-  }
-
-  Future<void> _addWallet() async {
-    final address = _addressController.text.trim();
-    final label = _labelController.text.trim();
-
-    if (address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a wallet address')),
-      );
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final wallets = prefs.getStringList('wallets') ?? [];
-    wallets.add('$_selectedCoin|$label|$address');
-    await prefs.setStringList('wallets', wallets);
-
-    _addressController.clear();
-    _labelController.clear();
-
-    await _loadWallets();
-
-    if (widget.isFirstTime && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
-    }
+  Future<void> _scanForWallets() async {
+    setState(() => _scanning = true);
+    final found = await WalletDetector.getInstalledWallets();
+    setState(() {
+      _installedWallets = found;
+      _scanning = false;
+    });
   }
 
   Future<void> _deleteWallet(int index) async {
@@ -185,10 +103,195 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
               await _loadWallets();
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            child: const Text('Save',
-                style: TextStyle(color: Colors.tealAccent)),
+            child:
+                const Text('Save', style: TextStyle(color: Colors.tealAccent)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _onWalletTapped(WalletDefinition wallet) {
+    if (wallet.type == WalletType.custodial) {
+      _openCustodialFlow(wallet);
+      return;
+    }
+    if (wallet.coins.length == 1) {
+      _showAddressSheet(wallet, wallet.coins.first);
+    } else {
+      _showCoinPicker(wallet);
+    }
+  }
+
+  void _openCustodialFlow(WalletDefinition wallet) {
+    if (wallet.name == 'ZBD') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ZbdConnectScreen(
+            onConnected: () {
+              Navigator.pop(context);
+              _loadWallets();
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${wallet.name} connection coming soon')),
+    );
+  }
+
+  void _showCoinPicker(WalletDefinition wallet) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Which coin in ${wallet.name}?',
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            ...wallet.coins.map((coin) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(WalletRegistry.coinLabel(coin)),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: Colors.tealAccent),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showAddressSheet(wallet, coin);
+                  },
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddressSheet(WalletDefinition wallet, WalletCoin coin) {
+    final addressController = TextEditingController();
+    final labelController =
+        TextEditingController(text: wallet.name);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Add ${wallet.name} — ${WalletRegistry.coinLabel(coin)}',
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: labelController,
+              decoration: const InputDecoration(labelText: 'Label (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: addressController,
+              decoration: InputDecoration(
+                labelText: 'Wallet Address',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.paste, color: Colors.tealAccent),
+                  onPressed: () async {
+                    final data = await Clipboard.getData('text/plain');
+                    if (data?.text != null) {
+                      addressController.text = data!.text!.trim();
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.tealAccent,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () async {
+                  final address = addressController.text.trim();
+                  if (address.isEmpty) return;
+                  final label = labelController.text.trim();
+                  final coinStr = WalletRegistry.coinLabel(coin);
+                  final prefs = await SharedPreferences.getInstance();
+                  final wallets = prefs.getStringList('wallets') ?? [];
+                  wallets.add('$coinStr|$label|$address');
+                  await prefs.setStringList('wallets', wallets);
+                  await _loadWallets();
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (widget.isFirstTime && mounted) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    );
+                  }
+                },
+                child: const Text('Save',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showManualAddSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Add Custom Wallet',
+                style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            const Text(
+              'Support for custom wallet entry is coming soon.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54),
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -204,15 +307,19 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             )
           : MeldrinoAppBar(onRefresh: _loadWallets),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _scanForWallets();
+          await _loadWallets();
+        },
+        child: SafeArea(
+          child: ListView(
+          padding: const EdgeInsets.all(16),
           children: [
             if (widget.isFirstTime) ...[
               const Text('Welcome to Meldrino',
-                  style:
-                      TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Text(
                 'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
@@ -222,188 +329,119 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
               const SizedBox(height: 24),
             ],
 
-            // ── ZBD Custodial Section ──
-            const Text('Custodial Wallets',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.tealAccent,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2)),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF16213E),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Color(0xFF2A2A4A),
-                    child: Text('Z',
-                        style: TextStyle(
+            // ── Found on your phone ──────────────────────────
+            const Text('Found on your phone',
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            if (_scanning)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                    child: CircularProgressIndicator(
+                        color: Colors.tealAccent)),
+              )
+            else if (_installedWallets.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No known wallets found on this device.',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.4), fontSize: 13),
+                ),
+              )
+            else
+              ..._installedWallets.map((wallet) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF2A2A4A),
+                      child: Text(
+                        wallet.name[0],
+                        style: const TextStyle(
                             color: Colors.tealAccent,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _zbdConnected
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('ZBD',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 15)),
-                              Text('@$_zbdUsername',
-                                  style: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
-                                      fontSize: 13)),
-                            ],
-                          )
-                        : const Text('ZBD',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 15)),
-                  ),
-                  _zbdConnected
-                      ? TextButton(
-                          onPressed: _disconnectZbd,
-                          child: const Text('Disconnect',
-                              style: TextStyle(color: Colors.redAccent)),
-                        )
-                      : ElevatedButton(
-                          onPressed: _connectZbd,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.tealAccent,
-                            foregroundColor: Colors.black,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
-                          child: const Text('Connect',
-                              style:
-                                  TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // ── Non-custodial Section ──
-            const Text('Non-Custodial Wallets',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.tealAccent,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2)),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF16213E),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Add Wallet',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _selectedCoin,
-                    dropdownColor: const Color(0xFF16213E),
-                    decoration: const InputDecoration(labelText: 'Coin'),
-                    items: _supportedCoins
-                        .map((c) =>
-                            DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedCoin = v!),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _labelController,
-                    decoration: const InputDecoration(
-                        labelText: 'Label (optional)',
-                        hintText: 'e.g. Natrium, My main wallet'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _addressController,
-                    decoration:
-                        const InputDecoration(labelText: 'Wallet Address'),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _addWallet,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.tealAccent,
-                        foregroundColor: Colors.black,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                            fontWeight: FontWeight.bold),
                       ),
-                      child: const Text('Add Wallet',
-                          style:
-                              TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    title: Text(wallet.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      wallet.coins
+                          .map(WalletRegistry.coinLabel)
+                          .join(', '),
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.4),
+                          fontSize: 12),
+                    ),
+                    trailing: const Icon(Icons.add_circle_outline,
+                        color: Colors.tealAccent),
+                    onTap: () => _onWalletTapped(wallet),
+                  )),
+
             const SizedBox(height: 24),
 
+            // ── Add custom ───────────────────────────────────
+            OutlinedButton.icon(
+              onPressed: _showManualAddSheet,
+              icon: const Icon(Icons.add, color: Colors.tealAccent),
+              label: const Text('Add custom wallet',
+                  style: TextStyle(color: Colors.tealAccent)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.tealAccent),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+
+            const SizedBox(height: 32),
+
+            // ── Saved wallets ────────────────────────────────
             if (_wallets.isNotEmpty) ...[
               const Text('Saved Wallets',
                   style: TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _wallets.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: Color(0xFF2A2A4A)),
-                  itemBuilder: (context, index) {
-                    final parts = _wallets[index].split('|');
-                    final coin = parts[0];
-                    final label = parts[1].isNotEmpty ? parts[1] : coin;
-                    final address = parts[2];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(label,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600)),
-                      subtitle: Text(
-                        '$coin • ${address.substring(0, 20)}...',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
-                            fontSize: 12),
+              ..._wallets.asMap().entries.map((entry) {
+                final index = entry.key;
+                final parts = entry.value.split('|');
+                final coin = parts[0];
+                final label =
+                    parts[1].isNotEmpty ? parts[1] : parts[0];
+                final address = parts[2];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(label,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    '$coin • ${address.length > 20 ? '${address.substring(0, 20)}...' : address}',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 12),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined,
+                            color: Colors.tealAccent, size: 20),
+                        onPressed: () => _editWallet(index),
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined,
-                                color: Colors.tealAccent, size: 20),
-                            onPressed: () => _editWallet(index),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: Colors.redAccent, size: 20),
-                            onPressed: () => _deleteWallet(index),
-                          ),
-                        ],
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: Colors.redAccent, size: 20),
+                        onPressed: () => _deleteWallet(index),
                       ),
-                    );
-                  },
-                ),
-              ),
+                    ],
+                  ),
+                );
+              }),
             ],
           ],
         ),
+        ),
+          ),
       ),
     );
   }
