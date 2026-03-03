@@ -7,6 +7,15 @@ class NanoService {
   static const String _rpcUrl =
       'https://nodes.nanswap.com/XNO?api_key=$_apiKey';
 
+  /// Validates a Nano address format locally — no network call needed.
+  /// A valid Nano address starts with "nano_" followed by exactly 60
+  /// characters from the Nano base32 alphabet (13456789abcdefghijkmnopqrstuwxyz).
+  static bool isValidAddress(String address) {
+    final trimmed = address.trim();
+    final regex = RegExp(r'^nano_[13456789abcdefghijkmnopqrstuwxyz]{60}$');
+    return regex.hasMatch(trimmed);
+  }
+
   static Future<double> getBalance(String address) async {
     final response = await http.post(
       Uri.parse(_rpcUrl),
@@ -15,19 +24,10 @@ class NanoService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      if (data['error'] != null) {
-        final error = data['error'].toString().toLowerCase();
-        // A valid address that has never been used returns "Account not found"
-        // This is not an invalid address — just an unfunded one
-        if (error.contains('not found') || error.contains('account')) {
-          return 0.0;
-        }
-        throw Exception('Invalid Nano address: ${data['error']}');
-      }
-      final rawBalance = BigInt.parse(data['balance']?.toString() ?? '0');
+      final rawBalance = BigInt.parse(data['balance'] ?? '0');
       return rawBalance / BigInt.from(10).pow(30);
     }
-    throw Exception('Failed to reach Nano network');
+    return 0;
   }
 
   static Future<List<Map<String, dynamic>>> getHistory(String address,
@@ -43,7 +43,6 @@ class NanoService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      if (data['error'] != null) return [];
       final history = data['history'];
       if (history is List) {
         return history.cast<Map<String, dynamic>>();

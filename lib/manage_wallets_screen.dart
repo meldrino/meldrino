@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_bar.dart';
 import 'home_screen.dart';
-import 'wallet_detector.dart';
-import 'wallet_registry.dart';
-import 'coin_service.dart';
+import 'nano_service.dart';
 
 class ManageWalletsScreen extends StatefulWidget {
   final bool isFirstTime;
@@ -17,40 +14,13 @@ class ManageWalletsScreen extends StatefulWidget {
 
 class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   List<String> _wallets = [];
-  List<DetectedWallet> _detectedWallets = [];
-  bool _scanning = true;
-
-  final _addressController = TextEditingController();
-  final _labelController = TextEditingController();
   String _selectedCoin = 'Nano (XNO)';
   final List<String> _supportedCoins = ['Nano (XNO)'];
 
   @override
   void initState() {
     super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    await _loadWallets();
-    await _scanForWallets();
-  }
-
-  Future<void> _scanForWallets() async {
-    setState(() => _scanning = true);
-    final detected = await WalletDetector.getInstalledWallets();
-    if (!mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('wallets') ?? [];
-    final savedLabels = saved.map((w) => w.split('|')[1].toLowerCase()).toSet();
-
-    setState(() {
-      _detectedWallets = detected
-          .where((w) => !savedLabels.contains(w.definition.name.toLowerCase()))
-          .toList();
-      _scanning = false;
-    });
+    _loadWallets();
   }
 
   Future<void> _loadWallets() async {
@@ -60,191 +30,116 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     });
   }
 
-  Future<void> _addDetectedWallet(DetectedWallet detected) async {
+  void _showAddWalletDialog() {
     final addressController = TextEditingController();
-    final def = detected.definition;
-    final primaryCoin = WalletRegistry.coinLabel(def.coins.first);
-    final canVerify = CoinService.isVerifiable(primaryCoin);
+    final labelController = TextEditingController();
+    String? addressError;
 
-    debugPrint('ADD WALLET: name="${def.name}" primaryCoin="$primaryCoin" canVerify=$canVerify');
-
-    await showDialog(
+    showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) {
-        bool validating = false;
-        String? validationError;
-
         return StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            backgroundColor: const Color(0xFF16213E),
-            title: Row(
-              children: [
-                if (detected.iconBytes != null) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.memory(
-                        detected.iconBytes!, width: 32, height: 32),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                Text('Add ${def.name}'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Coin: $primaryCoin',
-                  style: TextStyle(
-                      color: Colors.tealAccent.withOpacity(0.8),
-                      fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: addressController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: 'Wallet Address',
-                    hintText: 'Paste your address here',
-                    errorText: validationError,
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.content_paste,
-                          color: Colors.tealAccent),
-                      tooltip: 'Paste',
-                      onPressed: () async {
-                        final data = await Clipboard.getData(
-                            Clipboard.kTextPlain);
-                        if (data?.text != null) {
-                          addressController.text = data!.text!.trim();
+          builder: (ctx, setDialogState) {
+            Future<void> handleAdd() async {
+              final address = addressController.text.trim();
+              final label = labelController.text.trim();
+
+              if (address.isEmpty) {
+                setDialogState(() => addressError = 'Please enter an address');
+                return;
+              }
+
+              if (!NanoService.isValidAddress(address)) {
+                setDialogState(() => addressError = 'Invalid Nano address');
+                return;
+              }
+
+              final prefs = await SharedPreferences.getInstance();
+              final wallets = prefs.getStringList('wallets') ?? [];
+              wallets.add('$_selectedCoin|$label|$address');
+              await prefs.setStringList('wallets', wallets);
+              await _loadWallets();
+
+              if (ctx.mounted) Navigator.pop(ctx);
+
+              if (widget.isFirstTime && mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                );
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF16213E),
+              title: const Text('Add Wallet'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _selectedCoin,
+                      dropdownColor: const Color(0xFF16213E),
+                      decoration: const InputDecoration(labelText: 'Coin'),
+                      items: _supportedCoins
+                          .map((c) =>
+                              DropdownMenuItem(value: c, child: Text(c)))
+                          .toList(),
+                      onChanged: (v) {
+                        setState(() => _selectedCoin = v!);
+                        setDialogState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: labelController,
+                      decoration: const InputDecoration(
+                        labelText: 'Label (optional)',
+                        hintText: 'e.g. Natrium, My main wallet',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: addressController,
+                      decoration: InputDecoration(
+                        labelText: 'Wallet Address',
+                        errorText: addressError,
+                      ),
+                      onChanged: (_) {
+                        if (addressError != null) {
+                          setDialogState(() => addressError = null);
                         }
                       },
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'We will verify your address before saving.',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  canVerify
-                      ? 'We will verify your address on the network before saving.'
-                      : 'Address will be saved without verification — $primaryCoin verification coming soon.',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.4), fontSize: 12),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: handleAdd,
+                  child: const Text('Add',
+                      style: TextStyle(color: Colors.tealAccent)),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: validating ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: validating
-                    ? null
-                    : () async {
-                        final address = addressController.text.trim();
-                        if (address.isEmpty) return;
-
-                        debugPrint('VALIDATE: ticker="$primaryCoin" address="$address" canVerify=$canVerify');
-
-                        setDialogState(() {
-                          validating = true;
-                          validationError = null;
-                        });
-
-                        try {
-                          if (canVerify) {
-                            final balance = await CoinService.getBalance(
-                                primaryCoin, address);
-                            debugPrint('VALIDATE: success balance=$balance');
-                          }
-
-                          final prefs = await SharedPreferences.getInstance();
-                          final wallets =
-                              prefs.getStringList('wallets') ?? [];
-                          wallets.add(
-                              '${def.name} ($primaryCoin)|${def.name}|$address');
-                          await prefs.setStringList('wallets', wallets);
-                          await _loadWallets();
-
-                          setState(() {
-                            _detectedWallets.removeWhere(
-                                (w) => w.definition.name == def.name);
-                          });
-
-                          if (ctx.mounted) Navigator.pop(ctx);
-
-                          if (widget.isFirstTime && mounted) {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const HomeScreen()),
-                            );
-                          }
-                        } on UnsupportedError catch (e) {
-                          debugPrint('VALIDATE: UnsupportedError=${e.message}');
-                          setDialogState(() => validating = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              SnackBar(
-                                content: Text(e.message ??
-                                    'Cannot verify this coin yet'),
-                                backgroundColor: Colors.orangeAccent,
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          debugPrint('VALIDATE: error=$e');
-                          setDialogState(() {
-                            validating = false;
-                            validationError =
-                                'Address not found on network — please check and try again.';
-                          });
-                        }
-                      },
-                child: validating
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.tealAccent),
-                      )
-                    : const Text('Add',
-                        style: TextStyle(color: Colors.tealAccent)),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
-  }
-
-  Future<void> _addWallet() async {
-    final address = _addressController.text.trim();
-    final label = _labelController.text.trim();
-
-    if (address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a wallet address')),
-      );
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final wallets = prefs.getStringList('wallets') ?? [];
-    wallets.add('$_selectedCoin|$label|$address');
-    await prefs.setStringList('wallets', wallets);
-
-    _addressController.clear();
-    _labelController.clear();
-
-    await _loadWallets();
-
-    if (widget.isFirstTime && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
-    }
   }
 
   Future<void> _deleteWallet(int index) async {
@@ -275,7 +170,6 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
       wallets.removeAt(index);
       await prefs.setStringList('wallets', wallets);
       await _loadWallets();
-      await _scanForWallets();
     }
   }
 
@@ -325,228 +219,87 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                   style: TextStyle(
                       fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             )
-          : AppBar(
-              title: const Text('Manage Wallets',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
+          : MeldrinoAppBar(onRefresh: _loadWallets),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.isFirstTime) ...[
+              const Text('Welcome to Meldrino',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(
+                'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.6), fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _showAddWalletDialog,
+                icon: const Icon(Icons.add),
+                label: const Text('Add Wallet',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.tealAccent,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ),
-      body: _scanning
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Colors.tealAccent),
-                  SizedBox(height: 16),
-                  Text('Scanning for wallet apps...'),
-                ],
-              ),
-            )
-          : Padding(
-              padding: const EdgeInsets.all(16),
-              child: ListView(
-                children: [
-                  if (widget.isFirstTime) ...[
-                    const Text('Welcome to Meldrino',
+            const SizedBox(height: 24),
+            if (_wallets.isNotEmpty) ...[
+              const Text('Saved Wallets',
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _wallets.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFF2A2A4A)),
+                  itemBuilder: (context, index) {
+                    final parts = _wallets[index].split('|');
+                    final coin = parts[0];
+                    final label = parts[1].isNotEmpty ? parts[1] : coin;
+                    final address = parts[2];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(label,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        '$coin • ${address.substring(0, 20)}...',
                         style: TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 14),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-
-                  // ── Detected wallets ──────────────────────────────────
-                  if (_detectedWallets.isNotEmpty) ...[
-                    const Text('Detected on your phone',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'These wallet apps are installed. Tap Add to enter your address.',
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 13),
-                    ),
-                    const SizedBox(height: 12),
-                    ...(_detectedWallets.map((w) => _buildDetectedTile(w))),
-                    const SizedBox(height: 24),
-                  ],
-
-                  // ── Manual add ────────────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF16213E),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Add Wallet Manually',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          value: _selectedCoin,
-                          dropdownColor: const Color(0xFF16213E),
-                          decoration:
-                              const InputDecoration(labelText: 'Coin'),
-                          items: _supportedCoins
-                              .map((c) => DropdownMenuItem(
-                                  value: c, child: Text(c)))
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => _selectedCoin = v!),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _labelController,
-                          decoration: const InputDecoration(
-                              labelText: 'Label (optional)',
-                              hintText: 'e.g. Natrium, My main wallet'),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _addressController,
-                          decoration: const InputDecoration(
-                              labelText: 'Wallet Address'),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _addWallet,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.tealAccent,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(12)),
-                            ),
-                            child: const Text('Add Wallet',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ── Saved wallets ─────────────────────────────────────
-                  if (_wallets.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    const Text('Saved Wallets',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    ...List.generate(_wallets.length, (index) {
-                      final parts = _wallets[index].split('|');
-                      final coin = parts[0];
-                      final label =
-                          parts[1].isNotEmpty ? parts[1] : coin;
-                      final address = parts[2];
-                      return Column(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 12),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(label,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            subtitle: Text(
-                              '$coin • ${address.length > 20 ? '${address.substring(0, 20)}...' : address}',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.4),
-                                  fontSize: 12),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined,
-                                      color: Colors.tealAccent,
-                                      size: 20),
-                                  onPressed: () => _editWallet(index),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.redAccent, size: 20),
-                                  onPressed: () => _deleteWallet(index),
-                                ),
-                              ],
-                            ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined,
+                                color: Colors.tealAccent, size: 20),
+                            onPressed: () => _editWallet(index),
                           ),
-                          const Divider(
-                              height: 1, color: Color(0xFF2A2A4A)),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.redAccent, size: 20),
+                            onPressed: () => _deleteWallet(index),
+                          ),
                         ],
-                      );
-                    }),
-                  ],
-                ],
-              ),
-            ),
-    );
-  }
-
-  Widget _buildDetectedTile(DetectedWallet detected) {
-    final def = detected.definition;
-    final coins =
-        def.coins.map((c) => WalletRegistry.coinLabel(c)).join(', ');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.tealAccent.withOpacity(0.3)),
-      ),
-      child: ListTile(
-        leading: detected.iconBytes != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.memory(
-                  detected.iconBytes!,
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                ),
-              )
-            : CircleAvatar(
-                backgroundColor: const Color(0xFF2A2A4A),
-                child: Text(
-                  def.name[0],
-                  style: const TextStyle(
-                      color: Colors.tealAccent,
-                      fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  },
                 ),
               ),
-        title: Text(def.name,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(coins,
-            style: TextStyle(
-                color: Colors.white.withOpacity(0.5), fontSize: 12)),
-        trailing: ElevatedButton(
-          onPressed: () => _addDetectedWallet(detected),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.tealAccent,
-            foregroundColor: Colors.black,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8)),
-          ),
-          child: const Text('Add',
-              style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ],
         ),
       ),
     );
