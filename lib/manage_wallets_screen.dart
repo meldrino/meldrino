@@ -38,7 +38,6 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   Future<void> _loadInstalledWallets() async {
     final installed = await WalletDetector.getInstalledWallets();
 
-    // Load icons for installed wallets
     final Map<String, Uint8List?> icons = {};
     try {
       final apps = await FlutterDeviceApps.listApps(
@@ -67,12 +66,25 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     return wallet.coins.map((c) => WalletRegistry.coinLabel(c)).join(', ');
   }
 
+  /// Returns the coin storage key in the format home_screen.dart expects.
+  /// e.g. "Nano (XNO)" — home_screen checks coin.contains('Nano')
   String _coinStorageKey(WalletDefinition wallet) {
     final coin = wallet.coins.firstWhere(
       (c) => c != WalletCoin.multi,
       orElse: () => wallet.coins.first,
     );
-    return '${wallet.name} (${WalletRegistry.coinLabel(coin)})';
+    switch (coin) {
+      case WalletCoin.xno: return 'Nano (XNO)';
+      case WalletCoin.ban: return 'Banano (BAN)';
+      case WalletCoin.btc: return 'Bitcoin (BTC)';
+      case WalletCoin.btcLightning: return 'Bitcoin Lightning (BTC)';
+      case WalletCoin.eth: return 'Ethereum (ETH)';
+      case WalletCoin.sol: return 'Solana (SOL)';
+      case WalletCoin.xrp: return 'XRP (XRP)';
+      case WalletCoin.xmr: return 'Monero (XMR)';
+      case WalletCoin.wow: return 'Wownero (WOW)';
+      default: return wallet.name;
+    }
   }
 
   Widget _walletIcon(WalletDefinition wallet, {bool dimmed = false}) {
@@ -382,9 +394,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                             style: TextStyle(
                                 color: Colors.white.withOpacity(0.3),
                                 fontSize: 13)),
-                        trailing:
-                            const Icon(Icons.add_circle_outline,
-                                color: Colors.white24),
+                        trailing: const Icon(Icons.add_circle_outline,
+                            color: Colors.white24),
                         onTap: () => _showAddAddressDialog(wallet),
                       ))),
                 ],
