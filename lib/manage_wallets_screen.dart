@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_bar.dart';
 import 'home_screen.dart';
-import 'nano_service.dart';
+import 'wallet_registry.dart';
+import 'wallet_detector.dart';
 
 class ManageWalletsScreen extends StatefulWidget {
   final bool isFirstTime;
@@ -14,13 +15,14 @@ class ManageWalletsScreen extends StatefulWidget {
 
 class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   List<String> _wallets = [];
-  String _selectedCoin = 'Nano (XNO)';
-  final List<String> _supportedCoins = ['Nano (XNO)'];
+  var _installedWallets = [];
+  bool _loadingWallets = true;
 
   @override
   void initState() {
     super.initState();
     _loadWallets();
+    _loadInstalledWallets();
   }
 
   Future<void> _loadWallets() async {
@@ -30,9 +32,31 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     });
   }
 
-  void _showAddWalletDialog() {
+  Future<void> _loadInstalledWallets() async {
+    final installed = await WalletDetector.getInstalledWallets();
+    setState(() {
+      _installedWallets = installed;
+      _loadingWallets = false;
+    });
+  }
+
+  String _coinLabel(dynamic wallet) {
+    if (wallet.coins.length == 1) {
+      return WalletRegistry.coinLabel(wallet.coins.first);
+    }
+    return (wallet.coins as List).map((c) => WalletRegistry.coinLabel(c)).join(', ');
+  }
+
+  String _coinStorageKey(dynamic wallet) {
+    final coin = (wallet.coins as List).firstWhere(
+      (c) => c != WalletCoin.multi,
+      orElse: () => wallet.coins.first,
+    );
+    return '${wallet.name} (${WalletRegistry.coinLabel(coin)})';
+  }
+
+  void _showAddAddressDialog(dynamic wallet) {
     final addressController = TextEditingController();
-    final labelController = TextEditingController();
     String? addressError;
 
     showDialog(
@@ -43,21 +67,16 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
           builder: (ctx, setDialogState) {
             Future<void> handleAdd() async {
               final address = addressController.text.trim();
-              final label = labelController.text.trim();
 
               if (address.isEmpty) {
                 setDialogState(() => addressError = 'Please enter an address');
                 return;
               }
 
-              if (!NanoService.isValidAddress(address)) {
-                setDialogState(() => addressError = 'Invalid Nano address');
-                return;
-              }
-
               final prefs = await SharedPreferences.getInstance();
               final wallets = prefs.getStringList('wallets') ?? [];
-              wallets.add('$_selectedCoin|$label|$address');
+              final storageKey = _coinStorageKey(wallet);
+              wallets.add('$storageKey|${wallet.name}|$address');
               await prefs.setStringList('wallets', wallets);
               await _loadWallets();
 
@@ -73,56 +92,32 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
 
             return AlertDialog(
               backgroundColor: const Color(0xFF16213E),
-              title: const Text('Add Wallet'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      value: _selectedCoin,
-                      dropdownColor: const Color(0xFF16213E),
-                      decoration: const InputDecoration(labelText: 'Coin'),
-                      items: _supportedCoins
-                          .map((c) =>
-                              DropdownMenuItem(value: c, child: Text(c)))
-                          .toList(),
-                      onChanged: (v) {
-                        setState(() => _selectedCoin = v!);
-                        setDialogState(() {});
-                      },
+              title: Text('Add ${wallet.name}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Enter your ${_coinLabel(wallet)} address',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 13,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: labelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Label (optional)',
-                        hintText: 'e.g. Natrium, My main wallet',
-                      ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: addressController,
+                    decoration: InputDecoration(
+                      labelText: 'Wallet Address',
+                      errorText: addressError,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: addressController,
-                      decoration: InputDecoration(
-                        labelText: 'Wallet Address',
-                        errorText: addressError,
-                      ),
-                      onChanged: (_) {
-                        if (addressError != null) {
-                          setDialogState(() => addressError = null);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'We will verify your address before saving.',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+                    onChanged: (_) {
+                      if (addressError != null) {
+                        setDialogState(() => addressError = null);
+                      }
+                    },
+                  ),
+                ],
               ),
               actions: [
                 TextButton(
@@ -227,7 +222,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
           children: [
             if (widget.isFirstTime) ...[
               const Text('Welcome to Meldrino',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Text(
                 'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
@@ -236,27 +232,42 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
               ),
               const SizedBox(height: 24),
             ],
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _showAddWalletDialog,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Wallet',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.tealAccent,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
+            const Text('Your Installed Wallets',
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            if (_loadingWallets)
+              const Center(child: CircularProgressIndicator())
+            else if (_installedWallets.isEmpty)
+              Text(
+                'No supported wallets detected on this device.',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.5), fontSize: 14),
+              )
+            else
+              ...(_installedWallets.map((wallet) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFF2A2A4A),
+                      child: Icon(Icons.account_balance_wallet,
+                          color: Colors.tealAccent, size: 20),
+                    ),
+                    title: Text(wallet.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600)),
+                    subtitle: Text(_coinLabel(wallet),
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 13)),
+                    trailing: const Icon(Icons.add_circle_outline,
+                        color: Colors.tealAccent),
+                    onTap: () => _showAddAddressDialog(wallet),
+                  ))),
             if (_wallets.isNotEmpty) ...[
+              const SizedBox(height: 24),
               const Text('Saved Wallets',
-                  style:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Expanded(
                 child: ListView.separated(
@@ -266,7 +277,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                   itemBuilder: (context, index) {
                     final parts = _wallets[index].split('|');
                     final coin = parts[0];
-                    final label = parts[1].isNotEmpty ? parts[1] : coin;
+                    final label =
+                        parts[1].isNotEmpty ? parts[1] : coin;
                     final address = parts[2];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
