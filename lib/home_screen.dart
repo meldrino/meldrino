@@ -1,13 +1,19 @@
+// FULL FILE: home_screen.dart
+// Debug logging enabled (full)
+// Deletes and recreates C:/meldrino_app/debug.log at startup
+
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
 import 'nano_service.dart';
 import 'price_service.dart';
+import 'manage_wallets_screen.dart';
 import 'app_bar.dart';
-import 'coin_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -15,95 +21,149 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<CoinHolding> _holdings = [];
   bool _loading = true;
-  String? _error;
+
+  final File _logFile = File('C:/meldrino_app/debug.log');
+
+  void _log(String msg) {
+    final timestamp = DateTime.now().toIso8601String();
+    final line = '[HOME] $timestamp $msg\n';
+    try {
+      _logFile.writeAsStringSync(line, mode: FileMode.append);
+    } catch (_) {}
+    // ignore: avoid_print
+    print(line);
+  }
 
   @override
   void initState() {
     super.initState();
+
+    // Rotate log file
+    try {
+      if (_logFile.existsSync()) {
+        _logFile.deleteSync();
+      }
+      _logFile.writeAsStringSync('');
+    } catch (_) {}
+
+    _log('=== Meldrino HomeScreen started ===');
+
     _loadData();
   }
 
-  String _fiatSymbol(String currency) {
-    switch (currency) {
-      case 'GBP': return '\u00a3';
-      case 'EUR': return '\u20ac';
-      default: return '\u0024';
-    }
-  }
-
   Future<void> _loadData() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final wallets = prefs.getStringList('wallets') ?? [];
-      final fiatCurrency = prefs.getString('fiatCurrency') ?? 'USD';
+    setState(() => _loading = true);
 
-      debugPrint('=== MELDRINO DEBUG ===');
-      debugPrint('Wallet count: \${wallets.length}');
-      for (final w in wallets) { debugPrint('Raw: "\$w"'); }
+    final prefs = await SharedPreferences.getInstance();
+    final wallets = prefs.getStringList('wallets') ?? [];
 
-      final prices = await PriceService.getPrices(fiatCurrency);
-      final xnoPrice = prices['xno'] ?? 0;
-      debugPrint('XNO price: \$xnoPrice');
+    _log('Loaded raw wallet list: $wallets');
 
-      final List<CoinHolding> holdings = [];
-      for (final w in wallets) {
-        final parts = w.split('|');
-        final coin = parts[0];
-        final label = parts[1].isNotEmpty ? parts[1] : parts[0];
-        final address = parts[2];
-        debugPrint('coin="\$coin" containsNano=\${coin.contains("Nano")} address="\$address" len=\${address.length}');
-        if (coin.contains('Nano')) {
-          final balance = await NanoService.getBalance(address);
-          debugPrint('balance=\$balance');
-          holdings.add(CoinHolding(
-            name: 'Nano', ticker: 'XNO', wallet: label, address: address,
-            balance: balance, priceUsd: xnoPrice, fiatCurrency: fiatCurrency,
-            fiatSymbol: _fiatSymbol(fiatCurrency),
-          ));
-        }
+    final List<CoinHolding> holdings = [];
+
+    for (final w in wallets) {
+      _log('Raw wallet entry: "$w"');
+
+      final parts = w.split('|');
+      if (parts.length != 3) {
+        _log('ERROR: Invalid wallet entry format: "$w"');
+        continue;
       }
-      holdings.sort((a, b) => b.fiatValue.compareTo(a.fiatValue));
-      setState(() { _holdings = holdings; _loading = false; });
-    } catch (e) {
-      debugPrint('ERROR: \$e');
-      setState(() { _error = 'Failed to load data: \$e'; _loading = false; });
-    }
-  }
 
+      final coin = parts[0];
+      final label = parts[1].isNotEmpty ? parts[1] : parts[0];
+      final address = parts[2].trim();
+
+      _log('Parsed coin="$coin" label="$label" address="$address" len=${address.length}');
+      double balance = 0;
+
+      if (coin.contains('Nano')) {
+        _log('Calling NanoService.getBalance("$address")');
+        balance = await NanoService.getBalance(address);
+        _log('NanoService returned balance: $balance');
+      }
+
+      final price = await PriceService.getPrice(coin);
+      _log('PriceService returned price: $price');
+
+      holdings.add(
+        CoinHolding(
+          coin: coin,
+          label: label,
+          address: address,
+          balance: balance,
+          price: price,
+        ),
+      );
+    }
+
+    setState(() {
+      _holdings = holdings;
+      _loading = false;
+    });
+
+    _log('Finished loading holdings.');
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: MeldrinoAppBar(onRefresh: _loadData, showRefresh: true),
+      appBar: MeldrinoAppBar(onRefresh: _loadData),
       body: _loading
-          ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center,
-              children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Fetching balances...')]))
-          : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
-              : _holdings.isEmpty
-                  ? const Center(child: Text('No wallets added yet'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _holdings.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF2A2A4A)),
-                      itemBuilder: (context, index) {
-                        final coin = _holdings[index];
-                        return ListTile(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CoinDetailScreen(holding: coin))),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          leading: const CircleAvatar(backgroundColor: Color(0xFF2A2A4A),
-                              child: Text('N', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold))),
-                          title: Text(coin.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                          subtitle: Text(coin.wallet, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
-                          trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text('\${coin.fiatSymbol}\${coin.fiatValue.toStringAsFixed(2)}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              Text('\${coin.balance.toStringAsFixed(4)} \${coin.ticker}',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
-                            ]),
-                        );
-                      }),
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              itemCount: _holdings.length,
+              itemBuilder: (context, index) {
+                final h = _holdings[index];
+
+                return ListTile(
+                  title: Text(
+                    h.label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${h.coin} • ${h.address.substring(0, 20)}...',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 12,
+                    ),
+                  ),
+                  trailing: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        h.balance.toString(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '\$${(h.balance * h.price).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.tealAccent,
+        child: const Icon(Icons.add, color: Colors.black),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const ManageWalletsScreen(),
+            ),
+          ).then((_) => _loadData());
+        },
+      ),
     );
   }
 }
+

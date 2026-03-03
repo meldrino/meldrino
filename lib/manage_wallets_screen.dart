@@ -1,4 +1,9 @@
+// FULL FILE: manage_wallets_screen.dart
+// Debug logging enabled (minimal)
+// Writes to C:/meldrino_app/debug.log
+
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_device_apps/flutter_device_apps.dart';
@@ -21,6 +26,19 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   Map<String, Uint8List?> _icons = {};
   bool _loadingWallets = true;
 
+  final File _logFile = File('C:/meldrino_app/debug.log');
+
+  void _log(String msg) {
+    final timestamp = DateTime.now().toIso8601String();
+    final line = '[MANAGE] $timestamp $msg\n';
+    try {
+      _logFile.writeAsStringSync(line, mode: FileMode.append);
+    } catch (_) {}
+    // Also print to console
+    // ignore: avoid_print
+    print(line);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +51,7 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     setState(() {
       _wallets = prefs.getStringList('wallets') ?? [];
     });
+    _log('Loaded wallets: $_wallets');
   }
 
   Future<void> _loadInstalledWallets() async {
@@ -57,6 +76,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
       _icons = icons;
       _loadingWallets = false;
     });
+
+    _log('Installed wallets detected: ${installed.map((w) => w.name).toList()}');
   }
 
   String _coinLabel(WalletDefinition wallet) {
@@ -66,24 +87,32 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     return wallet.coins.map((c) => WalletRegistry.coinLabel(c)).join(', ');
   }
 
-  /// Returns the storage key that home_screen.dart can recognise.
-  /// home_screen checks coin.contains('Nano') for XNO wallets.
   String _coinStorageKey(WalletDefinition wallet) {
     final coin = wallet.coins.firstWhere(
       (c) => c != WalletCoin.multi,
       orElse: () => wallet.coins.first,
     );
     switch (coin) {
-      case WalletCoin.xno: return 'Nano (XNO)';
-      case WalletCoin.ban: return 'Banano (BAN)';
-      case WalletCoin.btc: return 'Bitcoin (BTC)';
-      case WalletCoin.btcLightning: return 'Bitcoin Lightning (BTC)';
-      case WalletCoin.eth: return 'Ethereum (ETH)';
-      case WalletCoin.sol: return 'Solana (SOL)';
-      case WalletCoin.xrp: return 'XRP (XRP)';
-      case WalletCoin.xmr: return 'Monero (XMR)';
-      case WalletCoin.wow: return 'Wownero (WOW)';
-      default: return wallet.name;
+      case WalletCoin.xno:
+        return 'Nano (XNO)';
+      case WalletCoin.ban:
+        return 'Banano (BAN)';
+      case WalletCoin.btc:
+        return 'Bitcoin (BTC)';
+      case WalletCoin.btcLightning:
+        return 'Bitcoin Lightning (BTC)';
+      case WalletCoin.eth:
+        return 'Ethereum (ETH)';
+      case WalletCoin.sol:
+        return 'Solana (SOL)';
+      case WalletCoin.xrp:
+        return 'XRP (XRP)';
+      case WalletCoin.xmr:
+        return 'Monero (XMR)';
+      case WalletCoin.wow:
+        return 'Wownero (WOW)';
+      default:
+        return wallet.name;
     }
   }
 
@@ -128,9 +157,13 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
               final prefs = await SharedPreferences.getInstance();
               final wallets = prefs.getStringList('wallets') ?? [];
               final storageKey = _coinStorageKey(wallet);
-              wallets.add('$storageKey|${wallet.name}|$address');
+
+              final entry = '$storageKey|${wallet.name}|$address';
+              wallets.add(entry);
               await prefs.setStringList('wallets', wallets);
               await _loadWallets();
+
+              _log('Added wallet entry: $entry');
 
               if (ctx.mounted) Navigator.pop(ctx);
 
@@ -214,9 +247,12 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     if (confirmed == true) {
       final prefs = await SharedPreferences.getInstance();
       final wallets = prefs.getStringList('wallets') ?? [];
+      final removed = wallets[index];
       wallets.removeAt(index);
       await prefs.setStringList('wallets', wallets);
       await _loadWallets();
+
+      _log('Deleted wallet entry: $removed');
     }
   }
 
@@ -242,10 +278,16 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
               final wallets = prefs.getStringList('wallets') ?? [];
-              wallets[index] =
+
+              final updated =
                   '${parts[0]}|${labelController.text.trim()}|${parts[2]}';
+              wallets[index] = updated;
+
               await prefs.setStringList('wallets', wallets);
               await _loadWallets();
+
+              _log('Edited wallet entry: $updated');
+
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Save',
@@ -281,21 +323,6 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (widget.isFirstTime) ...[
-                    const Text('Welcome to Meldrino',
-                        style: TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 14),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-
-                  // Saved wallets
                   if (_wallets.isNotEmpty) ...[
                     const Text('Saved Wallets',
                         style: TextStyle(
@@ -355,7 +382,6 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // Installed wallets
                   if (_installedWallets.isNotEmpty) ...[
                     const Text('Installed Wallets',
                         style: TextStyle(
@@ -378,7 +404,6 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // Other wallets
                   const Text('Other Wallets',
                       style: TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
