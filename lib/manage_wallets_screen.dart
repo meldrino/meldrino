@@ -1,5 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_device_apps/flutter_device_apps.dart';
 import 'app_bar.dart';
 import 'home_screen.dart';
 import 'wallet_registry.dart';
@@ -15,7 +17,8 @@ class ManageWalletsScreen extends StatefulWidget {
 
 class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   List<String> _wallets = [];
-  var _installedWallets = [];
+  List<WalletDefinition> _installedWallets = [];
+  Map<String, Uint8List?> _icons = {};
   bool _loadingWallets = true;
 
   @override
@@ -34,28 +37,65 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
 
   Future<void> _loadInstalledWallets() async {
     final installed = await WalletDetector.getInstalledWallets();
+
+    // Load icons for installed wallets
+    final Map<String, Uint8List?> icons = {};
+    try {
+      final apps = await FlutterDeviceApps.listApps(
+        includeSystem: false,
+        onlyLaunchable: true,
+        includeIcons: true,
+      );
+      for (final app in apps) {
+        if (app.packageName != null) {
+          icons[app.packageName!] = app.iconBytes;
+        }
+      }
+    } catch (_) {}
+
     setState(() {
       _installedWallets = installed;
+      _icons = icons;
       _loadingWallets = false;
     });
   }
 
-  String _coinLabel(dynamic wallet) {
+  String _coinLabel(WalletDefinition wallet) {
     if (wallet.coins.length == 1) {
       return WalletRegistry.coinLabel(wallet.coins.first);
     }
-    return (wallet.coins as List).map((c) => WalletRegistry.coinLabel(c)).join(', ');
+    return wallet.coins.map((c) => WalletRegistry.coinLabel(c)).join(', ');
   }
 
-  String _coinStorageKey(dynamic wallet) {
-    final coin = (wallet.coins as List).firstWhere(
+  String _coinStorageKey(WalletDefinition wallet) {
+    final coin = wallet.coins.firstWhere(
       (c) => c != WalletCoin.multi,
       orElse: () => wallet.coins.first,
     );
     return '${wallet.name} (${WalletRegistry.coinLabel(coin)})';
   }
 
-  void _showAddAddressDialog(dynamic wallet) {
+  Widget _walletIcon(WalletDefinition wallet, {bool dimmed = false}) {
+    final pkg = wallet.androidPackage;
+    if (pkg != null && _icons.containsKey(pkg) && _icons[pkg] != null) {
+      return CircleAvatar(
+        backgroundColor: const Color(0xFF2A2A4A),
+        backgroundImage: MemoryImage(_icons[pkg]!),
+      );
+    }
+    return CircleAvatar(
+      backgroundColor: const Color(0xFF2A2A4A),
+      child: Text(
+        wallet.name[0],
+        style: TextStyle(
+          color: dimmed ? Colors.white38 : Colors.tealAccent,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  void _showAddAddressDialog(WalletDefinition wallet) {
     final addressController = TextEditingController();
     String? addressError;
 
@@ -204,6 +244,13 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     );
   }
 
+  List<WalletDefinition> get _notInstalledWallets {
+    final installedNames = _installedWallets.map((w) => w.name).toSet();
+    return WalletRegistry.all
+        .where((w) => !installedNames.contains(w.name))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -215,105 +262,134 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             )
           : MeldrinoAppBar(onRefresh: _loadWallets),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.isFirstTime) ...[
-              const Text('Welcome to Meldrino',
-                  style: TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(
-                'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.6), fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-            ],
-            const Text('Your Installed Wallets',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (_loadingWallets)
-              const Center(child: CircularProgressIndicator())
-            else if (_installedWallets.isEmpty)
-              Text(
-                'No supported wallets detected on this device.',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.5), fontSize: 14),
-              )
-            else
-              ...(_installedWallets.map((wallet) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFF2A2A4A),
-                      child: Icon(Icons.account_balance_wallet,
-                          color: Colors.tealAccent, size: 20),
+      body: _loadingWallets
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.isFirstTime) ...[
+                    const Text('Welcome to Meldrino',
+                        style: TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Add a wallet address to get started. Your address is read-only — we never ask for your seed or private key.',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 14),
                     ),
-                    title: Text(wallet.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600)),
-                    subtitle: Text(_coinLabel(wallet),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Saved wallets
+                  if (_wallets.isNotEmpty) ...[
+                    const Text('Saved Wallets',
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                            fontSize: 13)),
-                    trailing: const Icon(Icons.add_circle_outline,
-                        color: Colors.tealAccent),
-                    onTap: () => _showAddAddressDialog(wallet),
-                  ))),
-            if (_wallets.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              const Text('Saved Wallets',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _wallets.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: Color(0xFF2A2A4A)),
-                  itemBuilder: (context, index) {
-                    final parts = _wallets[index].split('|');
-                    final coin = parts[0];
-                    final label =
-                        parts[1].isNotEmpty ? parts[1] : coin;
-                    final address = parts[2];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(label,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600)),
-                      subtitle: Text(
-                        '$coin • ${address.substring(0, 20)}...',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
-                            fontSize: 12),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    ...(_wallets.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final parts = entry.value.split('|');
+                      final coin = parts[0];
+                      final label =
+                          parts[1].isNotEmpty ? parts[1] : coin;
+                      final address = parts[2];
+                      return Column(
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined,
-                                color: Colors.tealAccent, size: 20),
-                            onPressed: () => _editWallet(index),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: Colors.redAccent, size: 20),
-                            onPressed: () => _deleteWallet(index),
+                          if (index > 0)
+                            const Divider(
+                                height: 1, color: Color(0xFF2A2A4A)),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              backgroundColor: const Color(0xFF2A2A4A),
+                              child: Text(
+                                label[0].toUpperCase(),
+                                style: const TextStyle(
+                                    color: Colors.tealAccent,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            title: Text(label,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              '$coin • ${address.substring(0, 20)}...',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.4),
+                                  fontSize: 12),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      color: Colors.tealAccent, size: 20),
+                                  onPressed: () => _editWallet(index),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.redAccent, size: 20),
+                                  onPressed: () => _deleteWallet(index),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    })),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Installed wallets
+                  if (_installedWallets.isNotEmpty) ...[
+                    const Text('Installed Wallets',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    ...(_installedWallets.map((wallet) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: _walletIcon(wallet),
+                          title: Text(wallet.name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600)),
+                          subtitle: Text(_coinLabel(wallet),
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 13)),
+                          trailing: const Icon(Icons.add_circle_outline,
+                              color: Colors.tealAccent),
+                          onTap: () => _showAddAddressDialog(wallet),
+                        ))),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Other wallets
+                  const Text('Other Wallets',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ...(_notInstalledWallets.map((wallet) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: _walletIcon(wallet, dimmed: true),
+                        title: Text(wallet.name,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withOpacity(0.5))),
+                        subtitle: Text(_coinLabel(wallet),
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.3),
+                                fontSize: 13)),
+                        trailing:
+                            const Icon(Icons.add_circle_outline,
+                                color: Colors.white24),
+                        onTap: () => _showAddAddressDialog(wallet),
+                      ))),
+                ],
               ),
-            ],
-          ],
-        ),
-      ),
+            ),
     );
   }
 }
