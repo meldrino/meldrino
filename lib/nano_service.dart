@@ -15,10 +15,19 @@ class NanoService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final rawBalance = BigInt.parse(data['balance'] ?? '0');
+      if (data['error'] != null) {
+        final error = data['error'].toString().toLowerCase();
+        // A valid address that has never been used returns "Account not found"
+        // This is not an invalid address — just an unfunded one
+        if (error.contains('not found') || error.contains('account')) {
+          return 0.0;
+        }
+        throw Exception('Invalid Nano address: ${data['error']}');
+      }
+      final rawBalance = BigInt.parse(data['balance']?.toString() ?? '0');
       return rawBalance / BigInt.from(10).pow(30);
     }
-    return 0;
+    throw Exception('Failed to reach Nano network');
   }
 
   static Future<List<Map<String, dynamic>>> getHistory(String address,
@@ -34,6 +43,7 @@ class NanoService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
+      if (data['error'] != null) return [];
       final history = data['history'];
       if (history is List) {
         return history.cast<Map<String, dynamic>>();

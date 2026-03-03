@@ -40,16 +40,23 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
     return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _openInNatrium() async {
-    final uri = Uri.parse('nano:${widget.holding.address}');
+  Future<void> _openWalletApp() async {
+    final package = widget.holding.androidPackage;
+    if (package == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wallet app not found on this device')),
+      );
+      return;
+    }
+
+    // Launch the wallet app's main screen via its package name
+    final uri = Uri.parse('android-app://$package');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Natrium not installed or not supported on this device')),
+          SnackBar(content: Text('Could not open ${widget.holding.wallet}')),
         );
       }
     }
@@ -58,8 +65,10 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final holding = widget.holding;
+    final hasWalletApp = holding.androidPackage != null;
+
     return Scaffold(
-      appBar: MeldrinoAppBar(onRefresh: () {}, showHome: true),
+      appBar: MeldrinoAppBar(onRefresh: () {}),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -127,22 +136,24 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _openInNatrium,
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open in Natrium'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.tealAccent,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+          if (hasWalletApp) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _openWalletApp,
+                icon: const Icon(Icons.open_in_new),
+                label: Text('Open ${holding.wallet}'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.tealAccent,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
           const Text('Recent Transactions',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),

@@ -7,6 +7,7 @@ class CoinHolding {
   final double priceUsd;
   final String fiatCurrency;
   final String fiatSymbol;
+  final String? androidPackage;
 
   const CoinHolding({
     required this.name,
@@ -17,6 +18,7 @@ class CoinHolding {
     required this.priceUsd,
     required this.fiatCurrency,
     required this.fiatSymbol,
+    this.androidPackage,
   });
 
   double get fiatValue => balance * priceUsd;

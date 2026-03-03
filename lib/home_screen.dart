@@ -3,9 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
 import 'nano_service.dart';
 import 'price_service.dart';
-import 'zbd_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
+import 'wallet_registry.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +33,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  bool _isNanoWallet(String coin) {
+    final c = coin.toLowerCase();
+    return c.contains('nano') ||
+        c.contains('xno') ||
+        c.contains('natrium') ||
+        c.contains('nautilus') ||
+        c.contains('wenano') ||
+        c.contains('cake');
+  }
+
+  /// Look up the android package name for a wallet by its label
+  String? _getPackageName(String label) {
+    try {
+      final def = WalletRegistry.all.firstWhere(
+        (w) => w.name.toLowerCase() == label.toLowerCase(),
+      );
+      return def.androidPackage;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _loadData() async {
     setState(() {
       _loading = true;
@@ -42,20 +64,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final wallets = prefs.getStringList('wallets') ?? [];
       final fiatCurrency = prefs.getString('fiatCurrency') ?? 'USD';
-      final symbol = _fiatSymbol(fiatCurrency);
       final prices = await PriceService.getPrices(fiatCurrency);
       final xnoPrice = prices['xno'] ?? 0;
-      final btcPrice = prices['btc'] ?? 0;
       final List<CoinHolding> holdings = [];
 
-      // Nano wallets
       for (final w in wallets) {
         final parts = w.split('|');
+        if (parts.length < 3) continue;
         final coin = parts[0];
         final label = parts[1].isNotEmpty ? parts[1] : parts[0];
         final address = parts[2];
+        final packageName = _getPackageName(label);
 
-        if (coin.contains('Nano')) {
+        if (_isNanoWallet(coin)) {
           final balance = await NanoService.getBalance(address);
           holdings.add(CoinHolding(
             name: 'Nano',
@@ -65,31 +86,11 @@ class _HomeScreenState extends State<HomeScreen> {
             balance: balance,
             priceUsd: xnoPrice,
             fiatCurrency: fiatCurrency,
-            fiatSymbol: symbol,
+            fiatSymbol: _fiatSymbol(fiatCurrency),
+            androidPackage: packageName,
           ));
         }
-      }
-
-      // ZBD wallet (Bitcoin sats)
-      final zbdToken = await ZbdService.getStoredToken();
-      if (zbdToken != null) {
-        try {
-          final sats = await ZbdService.getBalanceSats();
-          final username = await ZbdService.getUsername();
-          final btcBalance = sats / 100000000; // sats to BTC
-          holdings.add(CoinHolding(
-            name: 'Bitcoin (ZBD)',
-            ticker: 'BTC',
-            wallet: '@$username',
-            address: '',
-            balance: btcBalance,
-            priceUsd: btcPrice,
-            fiatCurrency: fiatCurrency,
-            fiatSymbol: symbol,
-          ));
-        } catch (e) {
-          // Token may have expired — silently skip, user can reconnect from wallets screen
-        }
+        // Future coins (BTC, ETH etc) will be added here as support is built
       }
 
       holdings.sort((a, b) => b.fiatValue.compareTo(a.fiatValue));
@@ -133,31 +134,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Divider(height: 1, color: Color(0xFF2A2A4A)),
                       itemBuilder: (context, index) {
                         final coin = _holdings[index];
-                        final isZbd = coin.ticker == 'BTC';
                         return ListTile(
-                          onTap: isZbd
-                              ? null // ZBD detail screen not yet built
-                              : () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          CoinDetailScreen(holding: coin),
-                                    ),
-                                  ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CoinDetailScreen(holding: coin),
+                            ),
+                          ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
-                          leading: CircleAvatar(
-                            backgroundColor: const Color(0xFF2A2A4A),
-                            child: Text(
-                              isZbd ? '₿' : 'N',
-                              style: const TextStyle(
-                                  color: Colors.tealAccent,
-                                  fontWeight: FontWeight.bold),
-                            ),
+                          leading: const CircleAvatar(
+                            backgroundColor: Color(0xFF2A2A4A),
+                            child: Text('N',
+                                style: TextStyle(
+                                    color: Colors.tealAccent,
+                                    fontWeight: FontWeight.bold)),
                           ),
                           title: Text(coin.name,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 16)),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16)),
                           subtitle: Text(coin.wallet,
                               style: TextStyle(
                                   color: Colors.white.withOpacity(0.5),
@@ -172,9 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16)),
                               Text(
-                                  isZbd
-                                      ? '${(coin.balance * 100000000).toStringAsFixed(0)} sats'
-                                      : '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
+                                  '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
                                   style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
                                       fontSize: 13)),
