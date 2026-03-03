@@ -66,8 +66,8 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     return wallet.coins.map((c) => WalletRegistry.coinLabel(c)).join(', ');
   }
 
-  /// Returns the coin storage key in the format home_screen.dart expects.
-  /// e.g. "Nano (XNO)" — home_screen checks coin.contains('Nano')
+  /// Returns the storage key that home_screen.dart can recognise.
+  /// home_screen checks coin.contains('Nano') for XNO wallets.
   String _coinStorageKey(WalletDefinition wallet) {
     final coin = wallet.coins.firstWhere(
       (c) => c != WalletCoin.multi,
