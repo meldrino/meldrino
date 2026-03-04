@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
 import 'nano_service.dart';
+import 'zbd_service.dart';
 import 'price_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
@@ -28,8 +29,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _fiatSymbol(String currency) {
     switch (currency) {
-      case "GBP": return "£";
-      case "EUR": return "€";
+      case "GBP": return "\u00a3";
+      case "EUR": return "\u20ac";
       default: return "\$";
     }
   }
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final fiatCurrency = prefs.getString("fiatCurrency") ?? "USD";
       final prices = await PriceService.getPrices(fiatCurrency);
       final xnoPrice = prices["xno"] ?? 0;
+      final btcPrice = prices["btc"] ?? 0;
       final List<CoinHolding> holdings = [];
 
       for (final w in wallets) {
@@ -53,7 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final label = parts[1].isNotEmpty ? parts[1] : parts[0];
         final address = parts[2];
 
-        // Look up androidPackage from registry by wallet label
         String? androidPackage;
         try {
           final walletDef = WalletRegistry.all.firstWhere(
@@ -61,6 +62,28 @@ class _HomeScreenState extends State<HomeScreen> {
           );
           androidPackage = walletDef.androidPackage;
         } catch (_) {}
+
+        // ZBD custodial Lightning wallet
+        if (address == 'zbd_custodial') {
+          try {
+            final sats = await ZbdService.getBalanceSats();
+            final btcBalance = sats / 100000000.0;
+            holdings.add(CoinHolding(
+              name: "Bitcoin (Lightning)",
+              ticker: "BTC",
+              wallet: label,
+              address: 'zbd_custodial',
+              balance: btcBalance,
+              priceUsd: btcPrice,
+              fiatCurrency: fiatCurrency,
+              fiatSymbol: _fiatSymbol(fiatCurrency),
+              androidPackage: androidPackage,
+            ));
+          } catch (_) {
+            // Token expired or missing - skip silently
+          }
+          continue;
+        }
 
         if (coin.contains("Nano")) {
           final balance = await NanoService.getBalance(address);
@@ -135,7 +158,9 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             Text(
-              coin.balance.toStringAsFixed(4) + " " + coin.ticker,
+              coin.address == 'zbd_custodial'
+                  ? '${(coin.balance * 100000000).toStringAsFixed(0)} sats'
+                  : coin.balance.toStringAsFixed(4) + " " + coin.ticker,
               style: TextStyle(
                   color: Colors.white.withOpacity(0.5), fontSize: 13),
             ),
@@ -231,7 +256,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 14)),
                   Text(
-                    coin.balance.toStringAsFixed(4) + " " + coin.ticker,
+                    coin.address == 'zbd_custodial'
+                        ? '${(coin.balance * 100000000).toStringAsFixed(0)} sats'
+                        : coin.balance.toStringAsFixed(4) + " " + coin.ticker,
                     style: TextStyle(
                         color: Colors.white.withOpacity(0.5), fontSize: 12),
                   ),

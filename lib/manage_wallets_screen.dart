@@ -1,7 +1,4 @@
 // FULL FILE: manage_wallets_screen.dart
-// Debug logging enabled (minimal)
-// Writes to C:/meldrino_app/debug.log
-
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -11,6 +8,8 @@ import 'app_bar.dart';
 import 'home_screen.dart';
 import 'wallet_registry.dart';
 import 'wallet_detector.dart';
+import 'zbd_connect_screen.dart';
+import 'zbd_service.dart';
 
 class ManageWalletsScreen extends StatefulWidget {
   final bool isFirstTime;
@@ -34,7 +33,6 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     try {
       _logFile.writeAsStringSync(line, mode: FileMode.append);
     } catch (_) {}
-    // Also print to console
     // ignore: avoid_print
     print(line);
   }
@@ -136,7 +134,44 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     );
   }
 
+  // ZBD gets its own connect flow instead of the address dialog
+  void _connectZbd(WalletDefinition wallet) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ZbdConnectScreen(
+          onConnected: () async {
+            // Add ZBD as a special wallet entry with a marker address
+            final prefs = await SharedPreferences.getInstance();
+            final wallets = prefs.getStringList('wallets') ?? [];
+            const entry = 'Bitcoin Lightning (BTC)|ZBD|zbd_custodial';
+            if (!wallets.contains(entry)) {
+              wallets.add(entry);
+              await prefs.setStringList('wallets', wallets);
+            }
+            await _loadWallets();
+            _log('ZBD connected and added');
+            if (widget.isFirstTime && mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+              );
+            } else if (mounted) {
+              Navigator.pop(context);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   void _showAddAddressDialog(WalletDefinition wallet) {
+    // ZBD uses its own connect flow
+    if (wallet.name == 'ZBD') {
+      _connectZbd(wallet);
+      return;
+    }
+
     final addressController = TextEditingController();
     String? addressError;
 
@@ -248,6 +283,13 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
       final prefs = await SharedPreferences.getInstance();
       final wallets = prefs.getStringList('wallets') ?? [];
       final removed = wallets[index];
+
+      // If removing ZBD, also clear the stored JWT token
+      if (removed.contains('|ZBD|zbd_custodial')) {
+        await ZbdService.clearToken();
+        _log('ZBD token cleared');
+      }
+
       wallets.removeAt(index);
       await prefs.setStringList('wallets', wallets);
       await _loadWallets();
@@ -257,6 +299,9 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   }
 
   Future<void> _editWallet(int index) async {
+    // ZBD has no editable address — skip edit for it
+    if (_wallets[index].contains('|ZBD|zbd_custodial')) return;
+
     final parts = _wallets[index].split('|');
     final labelController = TextEditingController(text: parts[1]);
 
@@ -305,6 +350,10 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
         .toList();
   }
 
+  // Check if ZBD is already added
+  bool get _zbdAlreadyAdded =>
+      _wallets.any((w) => w.contains('|ZBD|zbd_custodial'));
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -335,6 +384,7 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       final label =
                           parts[1].isNotEmpty ? parts[1] : coin;
                       final address = parts[2];
+                      final isZbd = address == 'zbd_custodial';
                       return Column(
                         children: [
                           if (index > 0)
@@ -355,7 +405,9 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600)),
                             subtitle: Text(
-                              '$coin • ${address.substring(0, 20)}...',
+                              isZbd
+                                  ? '$coin • Custodial Lightning'
+                                  : '$coin • ${address.substring(0, 20)}...',
                               style: TextStyle(
                                   color: Colors.white.withOpacity(0.4),
                                   fontSize: 12),
@@ -363,11 +415,12 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined,
-                                      color: Colors.tealAccent, size: 20),
-                                  onPressed: () => _editWallet(index),
-                                ),
+                                if (!isZbd)
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined,
+                                        color: Colors.tealAccent, size: 20),
+                                    onPressed: () => _editWallet(index),
+                                  ),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,
                                       color: Colors.redAccent, size: 20),
@@ -387,20 +440,30 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    ...(_installedWallets.map((wallet) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: _walletIcon(wallet),
-                          title: Text(wallet.name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600)),
-                          subtitle: Text(_coinLabel(wallet),
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
-                                  fontSize: 13)),
-                          trailing: const Icon(Icons.add_circle_outline,
-                              color: Colors.tealAccent),
-                          onTap: () => _showAddAddressDialog(wallet),
-                        ))),
+                    ...(_installedWallets.map((wallet) {
+                      final alreadyAdded = wallet.name == 'ZBD'
+                          ? _zbdAlreadyAdded
+                          : false;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: _walletIcon(wallet),
+                        title: Text(wallet.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600)),
+                        subtitle: Text(_coinLabel(wallet),
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 13)),
+                        trailing: alreadyAdded
+                            ? const Icon(Icons.check_circle,
+                                color: Colors.tealAccent)
+                            : const Icon(Icons.add_circle_outline,
+                                color: Colors.tealAccent),
+                        onTap: alreadyAdded
+                            ? null
+                            : () => _showAddAddressDialog(wallet),
+                      );
+                    })),
                     const SizedBox(height: 24),
                   ],
 
@@ -408,21 +471,31 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       style: TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  ...(_notInstalledWallets.map((wallet) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: _walletIcon(wallet, dimmed: true),
-                        title: Text(wallet.name,
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white.withOpacity(0.5))),
-                        subtitle: Text(_coinLabel(wallet),
-                            style: TextStyle(
-                                color: Colors.white.withOpacity(0.3),
-                                fontSize: 13)),
-                        trailing: const Icon(Icons.add_circle_outline,
-                            color: Colors.white24),
-                        onTap: () => _showAddAddressDialog(wallet),
-                      ))),
+                  ...(_notInstalledWallets.map((wallet) {
+                    final alreadyAdded = wallet.name == 'ZBD'
+                        ? _zbdAlreadyAdded
+                        : false;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: _walletIcon(wallet, dimmed: !alreadyAdded),
+                      title: Text(wallet.name,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withOpacity(0.5))),
+                      subtitle: Text(_coinLabel(wallet),
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.3),
+                              fontSize: 13)),
+                      trailing: alreadyAdded
+                          ? const Icon(Icons.check_circle,
+                              color: Colors.tealAccent)
+                          : const Icon(Icons.add_circle_outline,
+                              color: Colors.white24),
+                      onTap: alreadyAdded
+                          ? null
+                          : () => _showAddAddressDialog(wallet),
+                    );
+                  })),
                 ],
               ),
             ),

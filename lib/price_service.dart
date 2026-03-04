@@ -7,7 +7,7 @@ class PriceService {
     try {
       final response = await http.get(
         Uri.parse(
-          'https://api.coingecko.com/api/v3/simple/price?ids=nano&vs_currencies=$currency',
+          'https://api.coingecko.com/api/v3/simple/price?ids=nano,bitcoin&vs_currencies=$currency',
         ),
         headers: {
           'Accept': 'application/json',
@@ -16,11 +16,16 @@ class PriceService {
       ).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final Map<String, double> prices = {};
         if (data['nano'] != null && data['nano'][currency] != null) {
-          return {'xno': (data['nano'][currency] as num).toDouble()};
+          prices['xno'] = (data['nano'][currency] as num).toDouble();
         }
+        if (data['bitcoin'] != null && data['bitcoin'][currency] != null) {
+          prices['btc'] = (data['bitcoin'][currency] as num).toDouble();
+        }
+        return prices;
       }
     } catch (_) {}
-    return {'xno': 0};
+    return {'xno': 0, 'btc': 0};
   }
 }
