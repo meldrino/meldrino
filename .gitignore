@@ -44,3 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 node_modules/
+node_modules/
+zbd_auth.js
+zbd_qr.png
+package.json
+package-lock.json
