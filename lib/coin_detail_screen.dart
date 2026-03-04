@@ -25,15 +25,9 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
   }
 
   Future<void> _loadHistory({int count = 5}) async {
-    setState(() {
-      _loadingHistory = true;
-      if (count == 5) _showingAll = false;
-    });
-
+    setState(() => _loadingHistory = true);
     final history =
         await NanoService.getHistory(widget.holding.address, count: count);
-
-    if (!mounted) return;
     setState(() {
       _history = history;
       _loadingHistory = false;
@@ -41,32 +35,25 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
   }
 
   String _formatTimestamp(dynamic ts) {
-    final dt =
-        DateTime.fromMillisecondsSinceEpoch(int.parse(ts.toString()) * 1000);
-    return '${dt.day}/${dt.month}/${dt.year} '
-        '${dt.hour.toString().padLeft(2, '0')}:'
-        '${dt.minute.toString().padLeft(2, '0')}';
+    final dt = DateTime.fromMillisecondsSinceEpoch(
+        int.parse(ts.toString()) * 1000);
+    return "${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, "0")}:${dt.minute.toString().padLeft(2, "0")}";
   }
 
   Future<void> _openWalletApp() async {
-    final package = widget.holding.androidPackage;
-    if (package == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wallet app not found on this device')),
-      );
-      return;
-    }
-
-    // Launch the wallet app's main screen via its package name
-    final uri = Uri.parse('android-app://$package');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open ${widget.holding.wallet}')),
-        );
+    final holding = widget.holding;
+    final package = holding.androidPackage;
+    if (package != null) {
+      final uri = Uri.parse("market://launch?id=$package");
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
       }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Could not open ${holding.wallet}")),
+      );
     }
   }
 
@@ -82,7 +69,6 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Container,
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -101,27 +87,21 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${holding.balance.toStringAsFixed(6)} ${holding.ticker}',
+                  "${holding.balance.toStringAsFixed(6)} ${holding.ticker}",
                   style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
+                      fontSize: 28, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${holding.fiatSymbol}${holding.fiatValue.toStringAsFixed(2)} ${holding.fiatCurrency}',
+                  "${holding.fiatSymbol}${holding.fiatValue.toStringAsFixed(2)} ${holding.fiatCurrency}",
                   style: const TextStyle(
-                    fontSize: 18,
-                    color: Colors.tealAccent,
-                  ),
+                      fontSize: 18, color: Colors.tealAccent),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '1 ${holding.ticker} = ${holding.fiatSymbol}${holding.priceUsd.toStringAsFixed(4)}',
+                  "1 ${holding.ticker} = ${holding.fiatSymbol}${holding.priceUsd.toStringAsFixed(4)}",
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.4),
-                    fontSize: 13,
-                  ),
+                      color: Colors.white.withOpacity(0.4), fontSize: 13),
                 ),
               ],
             ),
@@ -139,68 +119,55 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
                   child: Text(
                     holding.address,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                    ),
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                        fontFamily: "monospace"),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(
-                    Icons.copy,
-                    color: Colors.tealAccent,
-                    size: 20,
-                  ),
+                  icon: const Icon(Icons.copy,
+                      color: Colors.tealAccent, size: 20),
                   onPressed: () {
-                    Clipboard.setData(
-                      ClipboardData(text: holding.address),
-                    );
+                    Clipboard.setData(ClipboardData(text: holding.address));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Address copied')),
+                      const SnackBar(content: Text("Address copied")),
                     );
                   },
                 ),
               ],
             ),
           ),
-          if (hasWalletApp) ...[
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
+          if (hasWalletApp)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _openWalletApp,
                 icon: const Icon(Icons.open_in_new),
-                label: Text('Open ${holding.wallet}'),
+                label: Text("Open in ${holding.wallet}"),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.tealAccent,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),
-          ],
           const SizedBox(height: 24),
-          const Text(
-            'Recent Transactions',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+          const Text("Recent Transactions",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           if (_loadingHistory)
             const Center(child: CircularProgressIndicator())
           else if (_history.isEmpty)
-            Text(
-              'No transactions found',
-              style: TextStyle(color: Colors.white.withOpacity(0.5)),
-            )
+            Text("No transactions found",
+                style: TextStyle(color: Colors.white.withOpacity(0.5)))
           else ...[
             ..._history.map((tx) {
-              final isReceive = tx['type'] == 'receive';
-              final amount =
-                  NanoService.rawToXno(tx['amount'].toString());
-              final time = _formatTimestamp(tx['local_timestamp']);
+              final isReceive = tx["type"] == "receive";
+              final amount = NanoService.rawToXno(tx["amount"].toString());
+              final time = _formatTimestamp(tx["local_timestamp"]);
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(14),
@@ -211,12 +178,8 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
                 child: Row(
                   children: [
                     Icon(
-                      isReceive
-                          ? Icons.arrow_downward
-                          : Icons.arrow_upward,
-                      color: isReceive
-                          ? Colors.greenAccent
-                          : Colors.redAccent,
+                      isReceive ? Icons.arrow_downward : Icons.arrow_upward,
+                      color: isReceive ? Colors.greenAccent : Colors.redAccent,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -225,7 +188,7 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isReceive ? 'Received' : 'Sent',
+                            isReceive ? "Received" : "Sent",
                             style: TextStyle(
                               color: isReceive
                                   ? Colors.greenAccent
@@ -233,18 +196,15 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          Text(
-                            time,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.4),
-                              fontSize: 12,
-                            ),
-                          ),
+                          Text(time,
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.4),
+                                  fontSize: 12)),
                         ],
                       ),
                     ),
                     Text(
-                      '${isReceive ? '+' : '-'}${amount.toStringAsFixed(4)} ${holding.ticker}',
+                      "${isReceive ? "+" : "-"}${amount.toStringAsFixed(4)} ${holding.ticker}",
                       style: TextStyle(
                         color: isReceive
                             ? Colors.greenAccent
@@ -262,10 +222,8 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
                   setState(() => _showingAll = true);
                   _loadHistory(count: 50);
                 },
-                child: const Text(
-                  'Show all transactions',
-                  style: TextStyle(color: Colors.tealAccent),
-                ),
+                child: const Text("Show all transactions",
+                    style: TextStyle(color: Colors.tealAccent)),
               ),
           ],
         ],

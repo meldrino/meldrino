@@ -6,5 +6,6 @@ if ([string]::IsNullOrWhiteSpace($message)) {
     exit
 }
 git commit -m $message
+git pull origin main --rebase
 git push origin main
 Write-Host "Done! Changes pushed to GitHub." -ForegroundColor Green

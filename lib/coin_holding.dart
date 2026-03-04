@@ -1,17 +1,25 @@
 class CoinHolding {
-  final String coin;        // e.g. "Nano (XNO)"
-  final String label;       // user label or coin name
-  final String address;     // wallet address
-  final double balance;     // on-chain balance
-  final double price;       // price in USD
+  final String name;
+  final String ticker;
+  final String wallet;
+  final String address;
+  final double balance;
+  final double priceUsd;
+  final String fiatCurrency;
+  final String fiatSymbol;
+  final String? androidPackage;
 
   const CoinHolding({
-    required this.coin,
-    required this.label,
+    required this.name,
+    required this.ticker,
+    required this.wallet,
     required this.address,
     required this.balance,
-    required this.price,
+    required this.priceUsd,
+    required this.fiatCurrency,
+    required this.fiatSymbol,
+    this.androidPackage,
   });
 
-  double get fiatValue => balance * price;
+  double get fiatValue => balance * priceUsd;
 }
