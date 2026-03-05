@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ZbdService {
@@ -25,20 +25,27 @@ class ZbdService {
   }
 
   static Stream<Map<String, dynamic>> startQrAuthFlow() async* {
-    WebSocketChannel? channel;
+    WebSocket? socket;
     try {
-      channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
+      socket = await WebSocket.connect(
+        _wsUrl,
+        headers: {
+          'Origin': 'chrome-extension://kpjdchaapjheajadlaakiiigcbhoppda',
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      );
 
-      channel.sink.add(jsonEncode({
+      socket.add(jsonEncode({
         'type': 'internal-connection-sub-qr-auth',
         'data': {
-          'browserOS': 'Android',
+          'browserOS': 'Windows',
           'browserName': 'Chrome',
           'QRCodeZClient': 'browser-extension',
         }
       }));
 
-      await for (final message in channel.stream) {
+      await for (final message in socket) {
         final Map<String, dynamic> parsed = jsonDecode(message.toString());
         final String type = parsed['type'] ?? '';
 
@@ -60,7 +67,7 @@ class ZbdService {
     } catch (e) {
       yield {'type': 'error', 'message': e.toString()};
     } finally {
-      channel?.sink.close();
+      socket?.close();
     }
   }
 
