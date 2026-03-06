@@ -11,24 +11,11 @@ dependencies:
   shared_preferences: ^2.5.4
   http: ^1.6.0
   url_launcher: ^6.3.2
-  web_socket_channel: ^2.4.0
   flutter_device_apps: ^0.1.1
-  mobile_scanner: ^5.2.3
-  qr_flutter: ^4.1.0
+  flutter_foreground_task: ^8.16.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.1
 flutter:
   uses-material-design: true
-  assets:
-    - assets/
-
-flutter_launcher_icons:
-  android: true
-  ios: false
-  image_path: "assets/meldrino_icon_v46.png"
-  adaptive_icon_background: "#1A1A2E"
-  adaptive_icon_foreground: "assets/ic_launcher_foreground.png"
-  adaptive_icon_monochrome: "assets/ic_launcher_monochrome_transparent.png"
