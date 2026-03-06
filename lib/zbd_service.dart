@@ -27,6 +27,9 @@ class ZbdService {
   static Stream<Map<String, dynamic>> startQrAuthFlow() async* {
     WebSocket? socket;
     try {
+      print('[ZBD] Attempting WebSocket connection to $_wsUrl');
+      yield {'type': 'log', 'message': 'Connecting to ZBD...'};
+
       socket = await WebSocket.connect(
         _wsUrl,
         headers: {
@@ -36,38 +39,64 @@ class ZbdService {
         },
       );
 
-      socket.add(jsonEncode({
+      print('[ZBD] WebSocket connected successfully');
+      yield {'type': 'log', 'message': 'Connected. Sending subscription...'};
+
+      final subMsg = jsonEncode({
         'type': 'internal-connection-sub-qr-auth',
         'data': {
           'browserOS': 'Windows',
           'browserName': 'Chrome',
           'QRCodeZClient': 'browser-extension',
         }
-      }));
+      });
+      print('[ZBD] Sending: $subMsg');
+      socket.add(subMsg);
+      yield {'type': 'log', 'message': 'Subscription sent. Waiting for hash...'};
 
       await for (final message in socket) {
+        print('[ZBD] Received message: $message');
+        yield {'type': 'log', 'message': 'Received: $message'};
+
         final Map<String, dynamic> parsed = jsonDecode(message.toString());
         final String type = parsed['type'] ?? '';
 
         if (type == 'internal-hash-retrieved') {
+          print('[ZBD] Hash retrieved: ${parsed['data']}');
           yield {'type': 'qr_hash', 'data': parsed['data']};
         } else if (type == 'QR_CODE_AUTH_USER_DATA') {
+          print('[ZBD] User data received: ${parsed['data']}');
           yield {
             'type': 'user_preview',
             'username': parsed['data']['username'] ?? '',
             'image': parsed['data']['image'] ?? '',
           };
         } else if (type == 'QR_CODE_AUTH_USER_ACCEPT') {
+          print('[ZBD] Token received!');
           final token = parsed['data']['token'] as String;
           await saveToken(token);
           yield {'type': 'authenticated', 'token': token};
           break;
+        } else if (type == 'ping') {
+          print('[ZBD] Ping received, sending pong');
+          socket.add(jsonEncode({'type': 'pong', 'data': 'pong'}));
+          yield {'type': 'log', 'message': 'Ping received, pong sent'};
+        } else {
+          print('[ZBD] Unknown message type: $type');
+          yield {'type': 'log', 'message': 'Unknown message: $type'};
         }
       }
-    } catch (e) {
+
+      print('[ZBD] WebSocket stream ended');
+      yield {'type': 'log', 'message': 'Connection closed by server'};
+
+    } catch (e, stack) {
+      print('[ZBD] ERROR: $e');
+      print('[ZBD] STACK: $stack');
       yield {'type': 'error', 'message': e.toString()};
     } finally {
       socket?.close();
+      print('[ZBD] Socket closed');
     }
   }
 

@@ -1,7 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'zbd_service.dart';
+
+// Method channel to bring app back to foreground
+const _channel = MethodChannel('com.meldrino.app/foreground');
 
 class ZbdConnectScreen extends StatefulWidget {
   final VoidCallback onConnected;
@@ -15,12 +21,22 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
   String? _previewUsername;
   String? _previewImage;
   String? _error;
+  String? _qrHash;
   bool _authenticated = false;
   bool _waiting = false;
   bool _scanning = false;
   bool _manualEntry = false;
   StreamSubscription? _sub;
   final TextEditingController _tokenController = TextEditingController();
+  final List<String> _logs = [];
+
+  void _addLog(String msg) {
+    print('[ZBD_SCREEN] $msg');
+    setState(() {
+      _logs.add('[${DateTime.now().toIso8601String().substring(11, 19)}] $msg');
+      if (_logs.length > 50) _logs.removeAt(0);
+    });
+  }
 
   @override
   void dispose() {
@@ -33,32 +49,65 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     setState(() {
       _waiting = true;
       _error = null;
+      _qrHash = null;
       _previewUsername = null;
       _previewImage = null;
       _authenticated = false;
+      _logs.clear();
     });
+    _addLog('Starting direct connection...');
 
     _sub?.cancel();
-    _sub = ZbdService.startQrAuthFlow().listen((event) {
+    _sub = ZbdService.startQrAuthFlow().listen((event) async {
       if (!mounted) return;
       final type = event['type'];
+      _addLog('Event received: $type');
 
-      if (type == 'user_preview') {
+      if (type == 'log') {
+        _addLog(event['message']);
+      } else if (type == 'qr_hash') {
+        _addLog('Hash arrived! Launching ZBD app...');
+        final hash = event['data'];
+        setState(() => _qrHash = hash);
+        final url = Uri.parse(
+            'https://zebedee.io/qrauth/$hash?QRCodeZClient=browser-extension');
+        if (await canLaunchUrl(url)) {
+          _addLog('Opening ZBD app...');
+          await launchUrl(url, mode: LaunchMode.externalNonBrowserApplication);
+          // Wait for ZBD to process, then bring Meldrino back to front
+          await Future.delayed(const Duration(seconds: 2));
+          _addLog('Bringing Meldrino back to foreground...');
+          try {
+            await _channel.invokeMethod('bringToFront');
+          } catch (e) {
+            _addLog('Could not auto-return: $e');
+          }
+        } else {
+          _addLog('Could not launch ZBD app — URL: $url');
+        }
+      } else if (type == 'user_preview') {
+        _addLog('User preview: ${event['username']}');
         setState(() {
           _previewUsername = event['username'];
           _previewImage = event['image'];
         });
       } else if (type == 'authenticated') {
+        _addLog('AUTHENTICATED!');
         setState(() => _authenticated = true);
         Future.delayed(const Duration(milliseconds: 1200), () {
           if (mounted) widget.onConnected();
         });
       } else if (type == 'error') {
+        _addLog('ERROR: ${event['message']}');
         setState(() {
           _error = event['message'];
           _waiting = false;
         });
       }
+    }, onDone: () {
+      _addLog('Stream closed');
+    }, onError: (e) {
+      _addLog('Stream error: $e');
     });
   }
 
@@ -83,9 +132,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
   Future<void> _onManualSubmit() async {
     final token = _tokenController.text.trim();
     if (!token.startsWith('eyJ')) {
-      setState(() {
-        _error = 'That doesn\'t look like a valid ZBD token.';
-      });
+      setState(() => _error = 'That doesn\'t look like a valid ZBD token.');
       return;
     }
     await ZbdService.saveToken(token);
@@ -117,7 +164,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
     if (_scanning) return _buildScanner();
     if (_manualEntry) return _buildManualEntry();
     if (_error != null) return _buildError();
-    if (_previewUsername != null) return _buildUserPreview();
+    if (_authenticated) return _buildSuccess();
     if (_waiting) return _buildWaiting();
     return _buildInstructions();
   }
@@ -125,7 +172,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
   Widget _buildInstructions() {
     return SingleChildScrollView(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 20),
           const CircleAvatar(
@@ -142,8 +188,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center),
           const SizedBox(height: 32),
-
-          // Option 1 - QR scan from web helper
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -155,24 +199,21 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Scan from PC',
+                const Text('Connect directly',
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.tealAccent)),
                 const SizedBox(height: 8),
                 const Text(
-                    '1. On your PC open the Meldrino ZBD Connect page\n'
-                    '2. Scan the QR with your ZBD app\n'
-                    '3. Tap below to scan the token QR from the PC screen',
+                    'Meldrino connects to ZBD directly.\n'
+                    'A QR code will appear — scan it with your ZBD app.',
                     style: TextStyle(fontSize: 13, height: 1.6)),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => setState(() => _scanning = true),
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('Scan token QR code'),
+                  child: ElevatedButton(
+                    onPressed: _startListening,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.tealAccent,
                       foregroundColor: Colors.black,
@@ -180,15 +221,14 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: const Text('Connect directly',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
             ),
           ),
-
           const SizedBox(height: 20),
-
-          // Option 2 - direct WebSocket from phone
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -200,15 +240,16 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Connect directly',
+                Text('Scan from PC',
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.white.withOpacity(0.7))),
                 const SizedBox(height: 8),
                 Text(
-                    'Meldrino connects to ZBD directly — no PC needed.\n'
-                    'You\'ll be prompted to scan a QR with your ZBD app.',
+                    '1. On your PC open the Meldrino ZBD Connect page\n'
+                    '2. Scan the QR with your ZBD app\n'
+                    '3. Tap below to scan the token QR from the PC screen',
                     style: TextStyle(
                         fontSize: 13,
                         height: 1.6,
@@ -216,8 +257,10 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _startListening,
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() => _scanning = true),
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('Scan token QR code'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       side: BorderSide(color: Colors.white.withOpacity(0.3)),
@@ -225,16 +268,12 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Connect directly'),
                   ),
                 ),
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // Manual paste fallback
           TextButton(
             onPressed: () => setState(() => _manualEntry = true),
             child: Text('Paste token manually',
@@ -244,6 +283,123 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
           const SizedBox(height: 20),
         ],
       ),
+    );
+  }
+
+  Widget _buildWaiting() {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+
+        // QR code display area
+        if (_qrHash != null) ...[
+          const Text('Scan this QR with your ZBD app',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: QrImageView(
+              data: 'https://zebedee.io/qrauth/$_qrHash?QRCodeZClient=browser-extension',
+              version: QrVersions.auto,
+              size: 220,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Hash: ${_qrHash!.substring(0, 30)}...',
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.4),
+                  fontSize: 10,
+                  fontFamily: 'monospace')),
+        ] else ...[
+          const CircularProgressIndicator(color: Colors.tealAccent),
+          const SizedBox(height: 16),
+          const Text('Connecting to ZBD...',
+              style: TextStyle(fontSize: 16), textAlign: TextAlign.center),
+        ],
+
+        const SizedBox(height: 20),
+
+        // Live log
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ListView.builder(
+              itemCount: _logs.length,
+              itemBuilder: (context, i) => Text(
+                _logs[i],
+                style: const TextStyle(
+                    color: Colors.green, fontSize: 10, fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+        if (_qrHash != null)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => widget.onConnected(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.tealAccent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Continue to Meldrino',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          )
+        else
+          TextButton(
+            onPressed: () {
+              _sub?.cancel();
+              setState(() {
+                _waiting = false;
+                _qrHash = null;
+              });
+            },
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildUserPreview() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (_previewImage != null && _previewImage!.isNotEmpty)
+          CircleAvatar(
+            radius: 40,
+            backgroundImage: NetworkImage(_previewImage!),
+            backgroundColor: const Color(0xFF2A2A4A),
+          ),
+        const SizedBox(height: 16),
+        Text('@$_previewUsername',
+            style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.tealAccent)),
+        const SizedBox(height: 8),
+        Text('Authorising...',
+            style:
+                TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14)),
+        const SizedBox(height: 24),
+        const CircularProgressIndicator(color: Colors.tealAccent),
+      ],
     );
   }
 
@@ -302,8 +458,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(_error!,
-              style:
-                  const TextStyle(color: Colors.redAccent, fontSize: 13)),
+              style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
         ],
         const SizedBox(height: 20),
         SizedBox(
@@ -329,59 +484,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
           }),
           child: const Text('Back', style: TextStyle(color: Colors.white54)),
         ),
-      ],
-    );
-  }
-
-  Widget _buildWaiting() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const CircularProgressIndicator(color: Colors.tealAccent),
-        const SizedBox(height: 24),
-        const Text('Waiting for ZBD connection...',
-            style: TextStyle(fontSize: 16), textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        Text(
-          'Open your ZBD app and scan the QR code shown on your PC.',
-          style:
-              TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 24),
-        TextButton(
-          onPressed: () {
-            _sub?.cancel();
-            setState(() => _waiting = false);
-          },
-          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUserPreview() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (_previewImage != null && _previewImage!.isNotEmpty)
-          CircleAvatar(
-            radius: 40,
-            backgroundImage: NetworkImage(_previewImage!),
-            backgroundColor: const Color(0xFF2A2A4A),
-          ),
-        const SizedBox(height: 16),
-        Text('@$_previewUsername',
-            style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.tealAccent)),
-        const SizedBox(height: 8),
-        Text('Authorising...',
-            style: TextStyle(
-                color: Colors.white.withOpacity(0.5), fontSize: 14)),
-        const SizedBox(height: 24),
-        const CircularProgressIndicator(color: Colors.tealAccent),
       ],
     );
   }
@@ -417,11 +519,35 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
             style: TextStyle(
                 color: Colors.white.withOpacity(0.5), fontSize: 13),
             textAlign: TextAlign.center),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+        // Show logs even on error
+        if (_logs.isNotEmpty)
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ListView.builder(
+                itemCount: _logs.length,
+                itemBuilder: (context, i) => Text(
+                  _logs[i],
+                  style: const TextStyle(
+                      color: Colors.green,
+                      fontSize: 10,
+                      fontFamily: 'monospace'),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
         ElevatedButton(
           onPressed: () => setState(() {
             _error = null;
             _waiting = false;
+            _logs.clear();
           }),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.tealAccent,

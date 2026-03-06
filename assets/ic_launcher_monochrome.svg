@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Black background just so converters can see the white artwork -->
+  <rect width="512" height="512" fill="black"/>
+  
+  <g transform="translate(256,256) scale(1.15) translate(-256,-256)">
+
+    <!-- BITCOIN -->
+    <g transform="translate(68,256) rotate(-15) scale(0.264) translate(-170,-255)">
+      <line x1="170" y1="60" x2="170" y2="450" stroke="white" stroke-width="32" stroke-linecap="round"/>
+      <line x1="210" y1="60" x2="210" y2="88" stroke="white" stroke-width="32" stroke-linecap="round"/>
+      <line x1="210" y1="422" x2="210" y2="450" stroke="white" stroke-width="32" stroke-linecap="round"/>
+      <path d="M170,88 Q330,88 330,171 Q330,255 170,255" fill="none" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M170,255 Q330,255 330,338 Q330,422 170,422" fill="none" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- ETHEREUM -->
+    <g transform="translate(196,136) scale(0.35)">
+      <polyline points="0,-160 80,-20 0,40 -80,-20 0,-160" fill="none" stroke="white" stroke-width="22" stroke-linejoin="round"/>
+      <polyline points="-80,-20 0,160 80,-20" fill="none" stroke="white" stroke-width="22" stroke-linejoin="round"/>
+    </g>
+
+    <!-- SOLANA -->
+    <g transform="translate(316,130) scale(0.35)">
+      <path d="M-80,-40 Q0,-60 80,-40" fill="none" stroke="white" stroke-width="24" stroke-linecap="round"/>
+      <path d="M-80,20 Q0,0 80,20" fill="none" stroke="white" stroke-width="24" stroke-linecap="round"/>
+      <path d="M-80,80 Q0,60 80,80" fill="none" stroke="white" stroke-width="24" stroke-linecap="round"/>
+    </g>
+
+    <!-- LITECOIN -->
+    <g transform="translate(196,376) scale(0.35)">
+      <line x1="-40" y1="-140" x2="-40" y2="100" stroke="white" stroke-width="26" stroke-linecap="round"/>
+      <line x1="-40" y1="100" x2="80" y2="100" stroke="white" stroke-width="26" stroke-linecap="round"/>
+      <line x1="-80" y1="-20" x2="20" y2="-60" stroke="white" stroke-width="26" stroke-linecap="round"/>
+    </g>
+
+    <!-- POLYGON -->
+    <g transform="translate(316,376) scale(0.35)">
+      <polygon points="0,-120 104,-60 104,60 0,120 -104,60 -104,-60" fill="none" stroke="white" stroke-width="22" stroke-linejoin="round"/>
+    </g>
+
+    <!-- MONERO -->
+    <g transform="translate(412,256) scale(0.35)">
+      <circle cx="0" cy="0" r="120" fill="none" stroke="white" stroke-width="22"/>
+      <polyline points="-70,50 -70,-40 0,30 70,-40 70,50" fill="none" stroke="white" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Wallet - outline only -->
+    <rect x="100" y="136" width="312" height="240" rx="36" fill="none" stroke="white" stroke-width="12"/>
+    <line x1="100" y1="212" x2="412" y2="212" stroke="white" stroke-width="12"/>
+    <rect x="132" y="258" width="130" height="14" rx="7" fill="none" stroke="white" stroke-width="8"/>
+    <rect x="132" y="284" width="88" height="14" rx="7" fill="none" stroke="white" stroke-width="8"/>
+    <circle cx="368" cy="270" r="18" stroke="white" stroke-width="8" fill="none"/>
+
+  </g>
+</svg>
