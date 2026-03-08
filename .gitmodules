@@ -1,0 +1,6 @@
+[submodule "meldrino_zbd_connect"]
+	path = meldrino_zbd_connect
+	url = https://github.com/meldrino/meldrino-zbd-connect.git
+[submodule "meldrino_website"]
+	path = meldrino_website
+	url = https://github.com/meldrino/meldrino-website.git
