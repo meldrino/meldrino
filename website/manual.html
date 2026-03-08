@@ -1,0 +1,191 @@
+Set-Content -Path C:\meldrino_app\website\manual.html -Encoding UTF8 -Value @'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meldrino — User Manual</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root { --navy: #1A1A2E; --navy-mid: #16213e; --teal: #00BFA5; --teal-dark: #00897B; --mint: #69FFDA; --white: #ffffff; --white-60: rgba(255,255,255,0.6); --white-20: rgba(255,255,255,0.08); }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--navy); color: var(--white); font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(26,26,46,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(105,255,218,0.08); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .nav-logo-icon { width: 36px; height: 36px; }
+    .nav-logo-text { font-family: 'Space Mono', monospace; font-size: 18px; font-weight: 700; color: var(--mint); letter-spacing: -0.5px; }
+    .nav-links { display: flex; gap: 36px; list-style: none; }
+    .nav-links a { color: var(--white-60); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover, .nav-links a.active { color: var(--mint); }
+    .nav-cta { background: transparent; border: 1px solid var(--teal); color: var(--teal) !important; padding: 8px 20px; border-radius: 6px; transition: background 0.2s, color 0.2s !important; }
+    .nav-cta:hover { background: var(--teal) !important; color: var(--navy) !important; }
+    .page { display: flex; padding-top: 80px; min-height: 100vh; }
+    .sidebar { width: 240px; flex-shrink: 0; position: sticky; top: 80px; height: calc(100vh - 80px); overflow-y: auto; padding: 48px 24px; border-right: 1px solid rgba(105,255,218,0.08); }
+    .sidebar-label { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); margin-bottom: 16px; }
+    .sidebar-nav { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+    .sidebar-nav a { display: block; padding: 8px 12px; border-radius: 6px; color: var(--white-60); text-decoration: none; font-size: 13px; line-height: 1.4; transition: all 0.2s; border-left: 2px solid transparent; }
+    .sidebar-nav a:hover { color: var(--white); background: var(--white-20); border-left-color: var(--teal); }
+    .sidebar-nav a.active { color: var(--mint); background: rgba(105,255,218,0.06); border-left-color: var(--mint); }
+    .content { flex: 1; padding: 64px 72px; max-width: 780px; }
+    .page-eyebrow { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); margin-bottom: 12px; }
+    .page-title { font-family: 'Space Mono', monospace; font-size: clamp(32px, 4vw, 48px); font-weight: 700; letter-spacing: -1.5px; margin-bottom: 20px; line-height: 1.1; }
+    .page-intro { font-size: 18px; color: var(--white-60); line-height: 1.75; margin-bottom: 72px; font-weight: 300; font-style: italic; border-left: 3px solid var(--teal); padding-left: 20px; }
+    .manual-section { margin-bottom: 48px; scroll-margin-top: 100px; }
+    .section-eyebrow { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); margin-bottom: 10px; }
+    .section-title { font-family: 'Space Mono', monospace; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid rgba(105,255,218,0.08); }
+    .prose p { font-size: 16px; color: var(--white-60); line-height: 1.85; margin-bottom: 20px; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose p strong { color: var(--white); font-weight: 600; }
+    .prose p em { color: var(--mint); font-style: normal; font-weight: 500; }
+    .callout { border-radius: 12px; padding: 20px 24px; margin: 28px 0; background: rgba(0,191,165,0.07); border: 1px solid rgba(0,191,165,0.18); border-left: 3px solid var(--teal); }
+    .callout p { font-size: 15px !important; margin: 0 !important; color: rgba(255,255,255,0.75) !important; line-height: 1.7 !important; }
+    .callout p strong { color: var(--white) !important; }
+    .wallet-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 28px; }
+    .wallet-tag { background: rgba(105,255,218,0.06); border: 1px solid rgba(105,255,218,0.12); border-radius: 100px; padding: 6px 16px; font-size: 13px; font-family: 'Space Mono', monospace; color: var(--white-60); }
+    hr { border: none; border-top: 1px solid rgba(105,255,218,0.06); margin: 0 0 48px; }
+    footer { border-top: 1px solid rgba(105,255,218,0.08); padding: 40px 48px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .footer-logo { font-family: 'Space Mono', monospace; font-size: 16px; color: var(--mint); font-weight: 700; }
+    .footer-links { display: flex; gap: 28px; list-style: none; }
+    .footer-links a { color: var(--white-60); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--mint); }
+    .footer-copy { font-size: 12px; color: rgba(255,255,255,0.25); font-family: 'Space Mono', monospace; }
+    @media (max-width: 900px) { .sidebar { display: none; } .content { padding: 40px 24px; } nav { padding: 16px 24px; } .nav-links { display: none; } footer { padding: 32px 24px; flex-direction: column; text-align: center; } }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-logo">
+      <svg class="nav-logo-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="36" height="36" rx="8" fill="#1A1A2E"/>
+        <rect x="5" y="11" width="26" height="17" rx="4" fill="#00BFA5"/>
+        <rect x="5" y="15" width="26" height="6" fill="#00897B"/>
+        <circle cx="26" cy="19" r="2.5" fill="#1A1A2E"/>
+        <rect x="8" y="21" width="8" height="2" rx="1" fill="#1A1A2E" opacity="0.5"/>
+        <rect x="8" y="18" width="5" height="1.5" rx="0.75" fill="#1A1A2E" opacity="0.5"/>
+      </svg>
+      <span class="nav-logo-text">meldrino</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="/wallets.html">Wallets</a></li>
+      <li><a href="/manual.html" class="active">Manual</a></li>
+      <li><a href="/zbdconnect">ZBD Connect</a></li>
+      <li><a href="/about.html">About</a></li>
+      <li><a href="/download.html" class="nav-cta">Get the App</a></li>
+    </ul>
+  </nav>
+  <div class="page">
+    <aside class="sidebar">
+      <p class="sidebar-label">Contents</p>
+      <ul class="sidebar-nav" id="sidebar-nav">
+        <li><a href="#install" class="active">Installing Meldrino</a></li>
+        <li><a href="#detection">How wallet detection works</a></li>
+        <li><a href="#balances">Reading your balances</a></li>
+        <li><a href="#zbd">Connecting ZBD Lightning</a></li>
+      </ul>
+      <p class="sidebar-label" style="margin-top: 32px;">See also</p>
+      <ul class="sidebar-nav">
+        <li><a href="/faq.html">FAQ &amp; Troubleshooting</a></li>
+        <li><a href="/privacy.html">Privacy Policy</a></li>
+      </ul>
+    </aside>
+    <main class="content">
+      <p class="page-eyebrow">User Manual</p>
+      <h1 class="page-title">How to use<br>Meldrino</h1>
+      <p class="page-intro">Meldrino is designed to be simple. You don't need to be technical to use it — if you've already got crypto wallet apps on your phone, Meldrino just reads them for you.</p>
+      <section class="manual-section" id="install">
+        <p class="section-eyebrow">Section 01</p>
+        <h2 class="section-title">Installing Meldrino</h2>
+        <div class="prose">
+          <p>Getting Meldrino onto your phone is exactly like installing any other Android app. Head to the <strong>Google Play Store</strong>, search for <em>Meldrino</em>, and tap Install. That's it.</p>
+          <p>The app is completely free and there's no account to create. You don't need to hand over an email address, pick a password, or go through any sign-up process. Just install it and open it.</p>
+          <p>Once it's open, Meldrino gets straight to work — you don't need to configure anything before it starts showing you your balances.</p>
+          <div class="callout">
+            <p>Right now Meldrino lives on Android. If you're an iPhone user, it's on the roadmap — Meldrino is being built to run on both platforms, and the iOS version will follow once the Android experience is exactly where it needs to be.</p>
+          </div>
+        </div>
+      </section>
+      <hr>
+      <section class="manual-section" id="detection">
+        <p class="section-eyebrow">Section 02</p>
+        <h2 class="section-title">How wallet detection works</h2>
+        <div class="prose">
+          <p>The moment you open Meldrino, it takes a quiet look at the other apps installed on your phone. If it finds any crypto wallet apps it recognises, it adds them to your dashboard automatically.</p>
+          <p>You don't point it at anything or paste in any addresses. Meldrino finds your wallets the same way your phone's app drawer finds your icons — it just knows what's there.</p>
+          <div class="callout">
+            <p><strong>Your keys are always yours.</strong> Meldrino never asks for your seed phrase, recovery words, or private keys. It can see that a wallet app is installed, but it has no access to the wallet itself — only the balance that the wallet makes publicly available.</p>
+          </div>
+          <p>Meldrino currently recognises these wallets:</p>
+          <div class="wallet-list">
+            <span class="wallet-tag">Natrium</span>
+            <span class="wallet-tag">Nautilus</span>
+            <span class="wallet-tag">Cake Wallet</span>
+            <span class="wallet-tag">ZBD</span>
+            <span class="wallet-tag">MetaMask</span>
+            <span class="wallet-tag">Trust Wallet</span>
+            <span class="wallet-tag">Exodus</span>
+            <span class="wallet-tag">Monerujo</span>
+            <span class="wallet-tag">Muun</span>
+            <span class="wallet-tag">WeNano</span>
+            <span class="wallet-tag">Kalium</span>
+          </div>
+          <p>If you install a new wallet after Meldrino is already running, just close and reopen the app — it will pick up the new wallet straight away. More wallets are being added with every update.</p>
+        </div>
+      </section>
+      <hr>
+      <section class="manual-section" id="balances">
+        <p class="section-eyebrow">Section 03</p>
+        <h2 class="section-title">Reading your balances</h2>
+        <div class="prose">
+          <p>The main screen is your dashboard. Every wallet Meldrino has detected appears here with its current balance, so you can see everything at a glance without switching between apps.</p>
+          <p>Balances are fetched fresh each time you open the app. If you've just made a transaction and want to see the updated figure, <strong>pull down on the screen to refresh</strong> — the same gesture you'd use to refresh emails or a social feed.</p>
+          <p>Tapping on any wallet in the list takes you into more detail — recent transactions, the full balance, and anything else available for that particular wallet.</p>
+          <div class="callout">
+            <p>Some wallets show their balance immediately. Others — like <em>ZBD Lightning</em> — need a one-time connection before Meldrino can read them. If a wallet shows as connected but has no balance, see <a href="#zbd" style="color: var(--mint); text-decoration: underline; text-underline-offset: 3px;">Section 4</a>.</p>
+          </div>
+        </div>
+      </section>
+      <hr>
+      <section class="manual-section" id="zbd">
+        <p class="section-eyebrow">Section 04</p>
+        <h2 class="section-title">Connecting ZBD Lightning</h2>
+        <div class="prose">
+          <p>ZBD is a Bitcoin Lightning wallet — and unlike most of the wallets Meldrino detects, it's <em>custodial</em>, meaning ZBD holds your funds on your behalf. Because of this, reading your ZBD balance requires a one-off login step to prove to ZBD that Meldrino has your permission.</p>
+          <p>The good news is you only ever need to do this once. After that, Meldrino remembers the connection for around 30 days before it needs a quick renewal.</p>
+          <p>To connect, you'll need to be near a computer — a laptop or desktop will do — because the process uses a QR code that appears on your computer screen and gets scanned by your phone.</p>
+          <p>On your computer, open a browser and go to <strong style="color: var(--mint);">meldrino.duckdns.org/zbdconnect</strong>. A QR code will appear on screen. Now pick up your phone, open the <strong>ZBD app</strong>, and use its built-in scanner to scan that code. ZBD will ask you to confirm the connection — tap Approve.</p>
+          <p>Once you've approved it, a second QR code will appear on your computer screen. This one goes into Meldrino — open the app, navigate to the ZBD Connect screen, and scan it. Meldrino will store the connection securely on your device, and your Lightning balance will appear on your dashboard.</p>
+          <div class="callout">
+            <p><strong>Nothing leaves your phone.</strong> The token Meldrino uses to read your ZBD balance is stored only on your device. It is never sent to any Meldrino server or third party.</p>
+          </div>
+          <p>If the connection ever stops working — for example after the 30-day expiry — just repeat the process above. It only takes a minute.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <footer>
+    <span class="footer-logo">meldrino</span>
+    <ul class="footer-links">
+      <li><a href="/wallets.html">Wallets</a></li>
+      <li><a href="/manual.html">Manual</a></li>
+      <li><a href="/zbdconnect">ZBD Connect</a></li>
+      <li><a href="/faq.html">FAQ</a></li>
+      <li><a href="/privacy.html">Privacy Policy</a></li>
+      <li><a href="/about.html">About</a></li>
+    </ul>
+    <span class="footer-copy">// not another wallet</span>
+  </footer>
+  <script>
+    const sections = document.querySelectorAll('.manual-section');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(s => { if (s.getBoundingClientRect().top <= 120) current = s.id; });
+      navLinks.forEach(a => { a.classList.remove('active'); if (a.getAttribute('href') === '#' + current) a.classList.add('active'); });
+    });
+  </script>
+</body>
+</html>
+'@
