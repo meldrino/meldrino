@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'zbd_service.dart';
 
 class ZbdConnectScreen extends StatefulWidget {
@@ -12,52 +13,27 @@ class ZbdConnectScreen extends StatefulWidget {
 }
 
 class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
-  String? _previewUsername;
-  String? _previewImage;
   String? _error;
   bool _authenticated = false;
-  bool _waiting = false;
-  StreamSubscription? _sub;
+  bool _scanning = false;
 
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
+  void _startScan() {
+    setState(() {
+      _scanning = true;
+      _error = null;
+    });
   }
 
-  void _startListening() {
-    setState(() {
-      _waiting = true;
-      _error = null;
-      _previewUsername = null;
-      _previewImage = null;
-      _authenticated = false;
-    });
-
-    _sub?.cancel();
-    _sub = ZbdService.startQrAuthFlow().listen((event) {
-      if (!mounted) return;
-      final type = event['type'];
-
-      if (type == 'qr_hash') {
-        // Hash received, WebSocket is ready and listening
-      } else if (type == 'user_preview') {
-        setState(() {
-          _previewUsername = event['username'];
-          _previewImage = event['image'];
-        });
-      } else if (type == 'authenticated') {
-        setState(() => _authenticated = true);
-        Future.delayed(const Duration(milliseconds: 1200), () {
-          if (mounted) widget.onConnected();
-        });
-      } else if (type == 'error') {
-        setState(() {
-          _error = event['message'];
-          _waiting = false;
-        });
-      }
-    });
+  void _onQrDetected(String token) async {
+    setState(() => _scanning = false);
+    try {
+      await ZbdService.saveToken(token);
+      setState(() => _authenticated = true);
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (mounted) widget.onConnected();
+    } catch (e) {
+      setState(() => _error = e.toString());
+    }
   }
 
   @override
@@ -80,8 +56,7 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
   Widget _buildBody() {
     if (_authenticated) return _buildSuccess();
     if (_error != null) return _buildError();
-    if (_previewUsername != null) return _buildUserPreview();
-    if (_waiting) return _buildWaiting();
+    if (_scanning) return _buildScanner();
     return _buildInstructions();
   }
 
@@ -107,8 +82,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
         const SizedBox(height: 8),
         GestureDetector(
           onTap: () {
-            Clipboard.setData(const ClipboardData(
-                text: 'https://meldrino.com/zbdconnect'));
+            Clipboard.setData(
+                const ClipboardData(text: 'https://meldrino.com/zbdconnect'));
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('URL copied')),
             );
@@ -119,7 +94,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF16213E),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.tealAccent.withOpacity(0.4)),
+              border:
+                  Border.all(color: Colors.tealAccent.withOpacity(0.4)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -136,16 +112,16 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _buildStep('2', 'Scan the QR code shown there using your ZBD app'),
+        _buildStep('2', 'Scan the first QR code with your ZBD app and tap Connect'),
         const SizedBox(height: 12),
-        _buildStep('3', 'Tap Connect in your ZBD app'),
+        _buildStep('3', 'A second QR code will appear on your PC screen'),
         const SizedBox(height: 12),
-        _buildStep('4', 'Tap the button below — Meldrino will wait for the connection'),
+        _buildStep('4', 'Tap the button below and scan that second QR code with Meldrino'),
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _startListening,
+            onPressed: _startScan,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.tealAccent,
               foregroundColor: Colors.black,
@@ -153,10 +129,40 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            child: const Text('Ready — connect now',
+            child: const Text('Scan QR from PC screen',
                 style:
                     TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildScanner() {
+    return Column(
+      children: [
+        const Text('Point your camera at the QR code on your PC screen',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15)),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: MobileScanner(
+              onDetect: (capture) {
+                final barcode = capture.barcodes.firstOrNull;
+                if (barcode?.rawValue != null) {
+                  _onQrDetected(barcode!.rawValue!);
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () => setState(() => _scanning = false),
+          child: const Text('Cancel',
+              style: TextStyle(color: Colors.tealAccent)),
         ),
       ],
     );
@@ -177,54 +183,8 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(text,
-              style: const TextStyle(fontSize: 14)),
+          child: Text(text, style: const TextStyle(fontSize: 14)),
         ),
-      ],
-    );
-  }
-
-  Widget _buildWaiting() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const CircularProgressIndicator(color: Colors.tealAccent),
-        const SizedBox(height: 24),
-        const Text('Waiting for ZBD connection...',
-            style: TextStyle(fontSize: 16), textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        Text(
-          'Scan the QR at meldrino.com/zbdconnect with your ZBD app and tap Connect.',
-          style:
-              TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUserPreview() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (_previewImage != null && _previewImage!.isNotEmpty)
-          CircleAvatar(
-            radius: 40,
-            backgroundImage: NetworkImage(_previewImage!),
-            backgroundColor: const Color(0xFF2A2A4A),
-          ),
-        const SizedBox(height: 16),
-        Text('@$_previewUsername',
-            style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.tealAccent)),
-        const SizedBox(height: 8),
-        Text('Authorising...',
-            style: TextStyle(
-                color: Colors.white.withOpacity(0.5), fontSize: 14)),
-        const SizedBox(height: 24),
-        const CircularProgressIndicator(color: Colors.tealAccent),
       ],
     );
   }
@@ -264,7 +224,6 @@ class _ZbdConnectScreenState extends State<ZbdConnectScreen> {
         ElevatedButton(
           onPressed: () => setState(() {
             _error = null;
-            _waiting = false;
           }),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.tealAccent,
