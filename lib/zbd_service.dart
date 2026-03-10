@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ZbdService {
@@ -25,27 +25,20 @@ class ZbdService {
   }
 
   static Stream<Map<String, dynamic>> startQrAuthFlow() async* {
-    WebSocket? socket;
+    WebSocketChannel? channel;
     try {
-      socket = await WebSocket.connect(
-        _wsUrl,
-        headers: {
-          'Origin': 'chrome-extension://kpjdchaapjheajadlaakiiigcbhoppda',
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      );
+      channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
 
-      socket.add(jsonEncode({
+      channel.sink.add(jsonEncode({
         'type': 'internal-connection-sub-qr-auth',
         'data': {
-          'browserOS': 'Windows',
+          'browserOS': 'Android',
           'browserName': 'Chrome',
           'QRCodeZClient': 'browser-extension',
         }
       }));
 
-      await for (final message in socket) {
+      await for (final message in channel.stream) {
         final Map<String, dynamic> parsed = jsonDecode(message.toString());
         final String type = parsed['type'] ?? '';
 
@@ -67,7 +60,7 @@ class ZbdService {
     } catch (e) {
       yield {'type': 'error', 'message': e.toString()};
     } finally {
-      socket?.close();
+      channel?.sink.close();
     }
   }
 
@@ -80,6 +73,20 @@ class ZbdService {
   static Future<String> getUsername() async {
     final data = await _get('$_baseUrl/me');
     return data['data']['username'] ?? 'ZBD User';
+  }
+
+  static Future<List<Map<String, dynamic>>> getTransactions({int count = 5}) async {
+    try {
+      final data = await _get('$_baseUrl/transactions?limit=$count');
+      final result = data['data'];
+      if (result is List) {
+        return result.cast<Map<String, dynamic>>();
+      }
+      if (result is Map && result['transactions'] is List) {
+        return (result['transactions'] as List).cast<Map<String, dynamic>>();
+      }
+    } catch (_) {}
+    return [];
   }
 
   static Future<Map<String, dynamic>> _get(String url) async {

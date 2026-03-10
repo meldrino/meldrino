@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_bar.dart';
 import 'home_screen.dart';
+import 'coin_registry.dart';
 import 'zbd_connect_screen.dart';
 
 class ManageWalletsScreen extends StatefulWidget {
@@ -16,41 +17,18 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   List<String> _wallets = [];
   final _addressController = TextEditingController();
   final _labelController = TextEditingController();
-  String _selectedCoin = 'Nano (XNO)';
-  String _selectedWallet = 'Other';
-
-  final List<String> _supportedCoins = ['Nano (XNO)', 'Ethereum (ETH)', 'Satoshi (SATS)'];
-
-  // Wallets per coin — custodial ones are flagged
-  static const Map<String, List<String>> _walletsByCoin = {
-    'Nano (XNO)': ['Natrium', 'Nautilus', 'Cake Wallet', 'WeNano', 'Other'],
-    'Ethereum (ETH)': ['MetaMask', 'Trust Wallet', 'Exodus', 'Rainbow', 'Coinbase Wallet', 'Other'],
-    'Satoshi (SATS)': ['ZBD', 'Strike', 'Cash App', 'Other'],
-  };
-
-  static const List<String> _custodialWallets = ['ZBD', 'Strike', 'Cash App'];
-
-  bool get _isCustodial => _custodialWallets.contains(_selectedWallet);
-  bool get _isZbd => _selectedWallet == 'ZBD';
+  late String _selectedCoinLabel;
 
   @override
   void initState() {
     super.initState();
+    _selectedCoinLabel = CoinRegistry.coinLabels.first;
     _loadWallets();
   }
 
-  List<String> get _walletsForCoin =>
-      _walletsByCoin[_selectedCoin] ?? ['Other'];
-
-  void _onCoinChanged(String? coin) {
-    if (coin == null) return;
-    final wallets = _walletsByCoin[coin] ?? ['Other'];
-    setState(() {
-      _selectedCoin = coin;
-      _selectedWallet = wallets.first;
-      _addressController.clear();
-    });
-  }
+  /// The adapter for the currently selected coin.
+  get _selectedAdapter =>
+      CoinRegistry.fromWalletEntry('$_selectedCoinLabel||placeholder');
 
   Future<void> _loadWallets() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,9 +38,16 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
   }
 
   Future<void> _addWallet() async {
-    final address = _addressController.text.trim();
-    final label = _labelController.text.trim();
+    final adapter = _selectedAdapter;
+    if (adapter == null) return;
 
+    if (adapter.isCustodial) {
+      // Custodial coins handle their own connect flow
+      _handleCustodialConnect(adapter.ticker);
+      return;
+    }
+
+    final address = _addressController.text.trim();
     if (address.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a wallet address')),
@@ -70,14 +55,14 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
       return;
     }
 
+    final label = _labelController.text.trim();
     final prefs = await SharedPreferences.getInstance();
     final wallets = prefs.getStringList('wallets') ?? [];
-    wallets.add('$_selectedCoin|${label.isNotEmpty ? label : _selectedWallet}|$address');
+    wallets.add('$_selectedCoinLabel|$label|$address');
     await prefs.setStringList('wallets', wallets);
 
     _addressController.clear();
     _labelController.clear();
-
     await _loadWallets();
 
     if (widget.isFirstTime && mounted) {
@@ -88,36 +73,34 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
     }
   }
 
-  Future<void> _addZbdWallet() async {
-    // Prevent duplicate ZBD entries
-    final prefs = await SharedPreferences.getInstance();
-    final wallets = prefs.getStringList('wallets') ?? [];
-    final alreadyExists = wallets.any((w) => w.startsWith('Satoshi (SATS)|') && w.contains('|zbd'));
-    if (alreadyExists) {
-      if (mounted) {
+  void _handleCustodialConnect(String ticker) {
+    if (ticker == 'SATS') {
+      // Check not already connected
+      final alreadyConnected = _wallets.any((w) {
+        final parts = w.split('|');
+        return parts.length >= 3 && parts[2] == 'zbd';
+      });
+      if (alreadyConnected) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ZBD wallet is already connected')),
+          const SnackBar(content: Text('ZBD is already connected')),
         );
+        return;
       }
-      return;
-    }
-
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ZbdConnectScreen(
-          onConnected: () async {
-            final prefs = await SharedPreferences.getInstance();
-            final wallets = prefs.getStringList('wallets') ?? [];
-            wallets.add('Satoshi (SATS)|ZBD|zbd');
-            await prefs.setStringList('wallets', wallets);
-            await _loadWallets();
-            if (mounted) Navigator.pop(context);
-          },
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ZbdConnectScreen(
+            onConnected: () async {
+              final prefs = await SharedPreferences.getInstance();
+              final wallets = prefs.getStringList('wallets') ?? [];
+              wallets.add('Satoshi (SATS)|ZBD|zbd');
+              await prefs.setStringList('wallets', wallets);
+              await _loadWallets();
+            },
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   Future<void> _deleteWallet(int index) async {
@@ -189,6 +172,9 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final adapter = _selectedAdapter;
+    final isCustodial = adapter?.isCustodial ?? false;
+
     return Scaffold(
       appBar: widget.isFirstTime
           ? AppBar(
@@ -227,158 +213,82 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       style: TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  // Coin dropdown
                   DropdownButtonFormField<String>(
-                    value: _selectedCoin,
+                    value: _selectedCoinLabel,
                     dropdownColor: const Color(0xFF16213E),
                     decoration: const InputDecoration(labelText: 'Coin'),
-                    items: _supportedCoins
+                    items: CoinRegistry.coinLabels
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                         .toList(),
-                    onChanged: _onCoinChanged,
+                    onChanged: (v) => setState(() => _selectedCoinLabel = v!),
                   ),
                   const SizedBox(height: 12),
-                  // Wallet dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedWallet,
-                    dropdownColor: const Color(0xFF16213E),
-                    decoration: const InputDecoration(labelText: 'Wallet'),
-                    items: _walletsForCoin
-                        .map((w) => DropdownMenuItem(value: w, child: Text(w)))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _selectedWallet = v!;
-                      _addressController.clear();
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  // Custodial: ZBD connect button
-                  if (_isZbd) ...[
+                  if (isCustodial) ...[
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.tealAccent.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.tealAccent.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.info_outline, color: Colors.tealAccent, size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'ZBD is a custodial wallet — connect via OAuth instead of pasting an address.',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7), fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _addZbdWallet,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.tealAccent,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text('Connect ZBD',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ] else if (_isCustodial) ...[
-                    // Other custodial wallets — show address field with note
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.amber.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.warning_amber_outlined, color: Colors.amber, size: 18),
-                          const SizedBox(width: 10),
+                          const Icon(Icons.info_outline,
+                              color: Colors.amber, size: 16),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '$_selectedWallet is a custodial wallet. Enter your deposit address.',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7), fontSize: 13),
+                              '${adapter?.name} uses OAuth — tap Connect to link your account.',
+                              style: const TextStyle(
+                                  color: Colors.amber, fontSize: 13),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _labelController,
-                      decoration: const InputDecoration(
-                          labelText: 'Label (optional)',
-                          hintText: 'e.g. My Strike account'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _addressController,
-                      decoration: const InputDecoration(labelText: 'Deposit Address'),
-                    ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _addWallet,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.tealAccent,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text('Add Wallet',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
                   ] else ...[
-                    // Normal non-custodial wallet
                     TextField(
                       controller: _labelController,
                       decoration: const InputDecoration(
                           labelText: 'Label (optional)',
-                          hintText: 'e.g. Natrium, My main wallet'),
+                          hintText: 'e.g. My main wallet'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _addressController,
-                      decoration: const InputDecoration(labelText: 'Wallet Address'),
+                      decoration:
+                          const InputDecoration(labelText: 'Wallet Address'),
                     ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _addWallet,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.tealAccent,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text('Add Wallet',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _addWallet,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.tealAccent,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text(
+                        isCustodial
+                            ? 'Connect ${adapter?.name}'
+                            : 'Add Wallet',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
             if (_wallets.isNotEmpty) ...[
               const Text('Saved Wallets',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Expanded(
                 child: ListView.separated(
@@ -390,15 +300,19 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                     final coin = parts[0];
                     final label = parts[1].isNotEmpty ? parts[1] : coin;
                     final address = parts[2];
-                    final isZbd = address == 'zbd';
+                    final isCustodialEntry = address == 'zbd';
+                    final shortAddress = isCustodialEntry
+                        ? 'Connected via OAuth'
+                        : (address.length > 20
+                            ? '${address.substring(0, 20)}...'
+                            : address);
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(label,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600)),
                       subtitle: Text(
-                        isZbd
-                            ? '$coin • Connected via OAuth'
-                            : '$coin • ${address.length > 20 ? '${address.substring(0, 20)}...' : address}',
+                        '$coin • $shortAddress',
                         style: TextStyle(
                             color: Colors.white.withOpacity(0.4),
                             fontSize: 12),
@@ -406,7 +320,7 @@ class _ManageWalletsScreenState extends State<ManageWalletsScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (!isZbd)
+                          if (!isCustodialEntry)
                             IconButton(
                               icon: const Icon(Icons.edit_outlined,
                                   color: Colors.tealAccent, size: 20),

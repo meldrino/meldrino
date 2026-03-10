@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'coin_holding.dart';
-import 'nano_service.dart';
+import 'coin_adapter.dart';
+import 'coin_registry.dart';
 import 'app_bar.dart';
 
 class CoinDetailScreen extends StatefulWidget {
@@ -14,9 +14,12 @@ class CoinDetailScreen extends StatefulWidget {
 }
 
 class _CoinDetailScreenState extends State<CoinDetailScreen> {
-  List<Map<String, dynamic>> _history = [];
+  List<TxRecord> _history = [];
   bool _loadingHistory = true;
+  String? _historyError;
   bool _showingAll = false;
+
+  CoinAdapter? get _adapter => CoinRegistry.byTicker(widget.holding.ticker);
 
   @override
   void initState() {
@@ -25,50 +28,36 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
   }
 
   Future<void> _loadHistory({int count = 5}) async {
-    setState(() => _loadingHistory = true);
-    final history =
-        await NanoService.getHistory(widget.holding.address, count: count);
-    setState(() {
-      _history = history;
-      _loadingHistory = false;
-    });
-  }
-
-  String _formatTimestamp(dynamic ts) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(
-        int.parse(ts.toString()) * 1000);
-    return "${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, "0")}:${dt.minute.toString().padLeft(2, "0")}";
-  }
-
-  Future<void> _openWalletApp() async {
-    final holding = widget.holding;
-    final package = holding.androidPackage;
-    if (package != null) {
-      final uri = Uri.parse("market://launch?id=$package");
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return;
-      }
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Could not open ${holding.wallet}")),
-      );
+    setState(() { _loadingHistory = true; _historyError = null; });
+    try {
+      final adapter = _adapter;
+      if (adapter == null) throw Exception('Unknown coin');
+      // Use rawAddress for API calls (e.g. 'zbd' sentinel), not the display address
+      final history = await adapter.getHistory(
+          widget.holding.rawAddress, count: count);
+      setState(() { _history = history; _loadingHistory = false; });
+    } catch (e) {
+      setState(() { _historyError = e.toString(); _loadingHistory = false; });
     }
   }
+
+  String _formatBalance(double balance, int dp) => balance.toStringAsFixed(dp);
 
   @override
   Widget build(BuildContext context) {
     final holding = widget.holding;
-    final hasWalletApp = holding.androidPackage != null;
+    final adapter = _adapter;
+    final dp = adapter?.decimalPlaces ?? 4;
+    final isCustodial = adapter?.isCustodial ?? false;
+    final addressLabel = adapter?.addressLabel ?? 'Address';
+    final showCopy = adapter?.showCopyButton ?? true;
 
     return Scaffold(
-      appBar: MeldrinoAppBar(
-        onRefresh: () => _loadHistory(count: 5),
-      ),
+      appBar: MeldrinoAppBar(onRefresh: () {}),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ── Balance card ──────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -78,35 +67,29 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  holding.wallet,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 14,
-                  ),
-                ),
+                Text(holding.wallet,
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.5), fontSize: 14)),
                 const SizedBox(height: 8),
-                Text(
-                  "${holding.balance.toStringAsFixed(6)} ${holding.ticker}",
-                  style: const TextStyle(
-                      fontSize: 28, fontWeight: FontWeight.bold),
-                ),
+                Text('${_formatBalance(holding.balance, dp)} ${holding.ticker}',
+                    style: const TextStyle(
+                        fontSize: 28, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(
-                  "${holding.fiatSymbol}${holding.fiatValue.toStringAsFixed(2)} ${holding.fiatCurrency}",
-                  style: const TextStyle(
-                      fontSize: 18, color: Colors.tealAccent),
-                ),
+                    '${holding.fiatSymbol}${holding.fiatValue.toStringAsFixed(2)} ${holding.fiatCurrency}',
+                    style: const TextStyle(
+                        fontSize: 18, color: Colors.tealAccent)),
                 const SizedBox(height: 4),
                 Text(
-                  "1 ${holding.ticker} = ${holding.fiatSymbol}${holding.priceUsd.toStringAsFixed(4)}",
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.4), fontSize: 13),
-                ),
+                    '1 ${holding.ticker} = ${holding.fiatSymbol}${holding.priceUsd.toStringAsFixed(dp >= 6 ? 8 : 4)}',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.4), fontSize: 13)),
               ],
             ),
           ),
           const SizedBox(height: 12),
+
+          // ── Address / identifier card ─────────────────────────────────
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -116,113 +99,114 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    holding.address,
-                    style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 12,
-                        fontFamily: "monospace"),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(addressLabel,
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.4),
+                              fontSize: 11)),
+                      const SizedBox(height: 4),
+                      Text(
+                        holding.address,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 13,
+                            fontFamily: isCustodial ? null : 'monospace'),
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.copy,
-                      color: Colors.tealAccent, size: 20),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: holding.address));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Address copied")),
-                    );
-                  },
-                ),
+                if (showCopy)
+                  IconButton(
+                    icon: const Icon(Icons.copy,
+                        color: Colors.tealAccent, size: 20),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: holding.address));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Address copied')),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          if (hasWalletApp)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _openWalletApp,
-                icon: const Icon(Icons.open_in_new),
-                label: Text("Open in ${holding.wallet}"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.tealAccent,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
           const SizedBox(height: 24),
-          const Text("Recent Transactions",
+
+          // ── Transaction history ───────────────────────────────────────
+          const Text('Recent Transactions',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           if (_loadingHistory)
             const Center(child: CircularProgressIndicator())
+          else if (_historyError != null)
+            Text('Could not load transactions: $_historyError',
+                style: TextStyle(color: Colors.white.withOpacity(0.5)))
           else if (_history.isEmpty)
-            Text("No transactions found",
+            Text('No transactions found',
                 style: TextStyle(color: Colors.white.withOpacity(0.5)))
           else ...[
-            ..._history.map((tx) {
-              final isReceive = tx["type"] == "receive";
-              final amount = NanoService.rawToXno(tx["amount"].toString());
-              final time = _formatTimestamp(tx["local_timestamp"]);
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16213E),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isReceive ? Icons.arrow_downward : Icons.arrow_upward,
-                      color: isReceive ? Colors.greenAccent : Colors.redAccent,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isReceive ? "Received" : "Sent",
-                            style: TextStyle(
-                              color: isReceive
-                                  ? Colors.greenAccent
-                                  : Colors.redAccent,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(time,
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.4),
-                                  fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      "${isReceive ? "+" : "-"}${amount.toStringAsFixed(4)} ${holding.ticker}",
-                      style: TextStyle(
-                        color: isReceive
+            ..._history.map((tx) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16213E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        tx.isReceive
+                            ? Icons.arrow_downward
+                            : Icons.arrow_upward,
+                        color: tx.isReceive
                             ? Colors.greenAccent
                             : Colors.redAccent,
-                        fontWeight: FontWeight.bold,
+                        size: 20,
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (tx.label != null && tx.label!.isNotEmpty)
+                                  ? tx.label!
+                                  : (tx.isReceive ? 'Received' : 'Sent'),
+                              style: TextStyle(
+                                color: tx.isReceive
+                                    ? Colors.greenAccent
+                                    : Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (tx.time.isNotEmpty)
+                              Text(tx.time,
+                                  style: TextStyle(
+                                      color: Colors.white.withOpacity(0.4),
+                                      fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${tx.isReceive ? '+' : '-'}${_formatBalance(tx.amount, dp)} ${holding.ticker}',
+                        style: TextStyle(
+                          color: tx.isReceive
+                              ? Colors.greenAccent
+                              : Colors.redAccent,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
             if (!_showingAll)
               TextButton(
                 onPressed: () {
                   setState(() => _showingAll = true);
                   _loadHistory(count: 50);
                 },
-                child: const Text("Show all transactions",
+                child: const Text('Show all transactions',
                     style: TextStyle(color: Colors.tealAccent)),
               ),
           ],

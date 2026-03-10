@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
-import 'nano_service.dart';
-import 'eth_service.dart';
-import 'zbd_service.dart';
+import 'coin_registry.dart';
 import 'price_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
@@ -35,91 +33,71 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
     try {
       final prefs = await SharedPreferences.getInstance();
       final wallets = prefs.getStringList('wallets') ?? [];
       final fiatCurrency = prefs.getString('fiatCurrency') ?? 'USD';
+      final symbol = _fiatSymbol(fiatCurrency);
       final prices = await PriceService.getPrices(fiatCurrency);
-      final xnoPrice = prices['xno'] ?? 0;
-      final ethPrice = prices['eth'] ?? 0;
-      final btcPrice = prices['btc'] ?? 0;
       final List<CoinHolding> holdings = [];
 
-      for (final w in wallets) {
-        final parts = w.split('|');
-        final coin = parts[0];
-        final label = parts[1].isNotEmpty ? parts[1] : parts[0];
-        final address = parts[2];
+      for (final entry in wallets) {
+        final parts = entry.split('|');
+        if (parts.length < 3) continue;
 
-        if (coin.contains('Nano')) {
-          final balance = await NanoService.getBalance(address);
+        final adapter = CoinRegistry.fromWalletEntry(entry);
+        if (adapter == null) continue;
+
+        final walletLabel = parts[1].isNotEmpty ? parts[1] : parts[0];
+        final rawAddress = parts[2];
+
+        try {
+          final balance = await adapter.getBalance(rawAddress);
+          final rawPrice = prices[adapter.coingeckoId] ?? 0.0;
+          final price = adapter.adjustPrice(rawPrice);
+          final displayAddress = adapter.isCustodial
+              ? await adapter.resolveDisplayAddress(rawAddress)
+              : rawAddress;
+
           holdings.add(CoinHolding(
-            name: 'Nano',
-            ticker: 'XNO',
-            wallet: label,
-            address: address,
+            name: adapter.name,
+            ticker: adapter.ticker,
+            wallet: walletLabel,
+            address: displayAddress,
+            rawAddress: rawAddress,
             balance: balance,
-            priceUsd: xnoPrice,
+            priceUsd: price,
             fiatCurrency: fiatCurrency,
-            fiatSymbol: _fiatSymbol(fiatCurrency),
+            fiatSymbol: symbol,
           ));
-        } else if (coin.contains('Ethereum')) {
-          final balance = await EthService.getBalance(address);
-          holdings.add(CoinHolding(
-            name: 'Ethereum',
-            ticker: 'ETH',
-            wallet: label,
-            address: address,
-            balance: balance,
-            priceUsd: ethPrice,
-            fiatCurrency: fiatCurrency,
-            fiatSymbol: _fiatSymbol(fiatCurrency),
-          ));
-        } else if (coin.contains('Satoshi')) {
-          if (address == 'zbd') {
-            try {
-              final sats = await ZbdService.getBalanceSats();
-              holdings.add(CoinHolding(
-                name: 'Bitcoin (Lightning)',
-                ticker: 'SATS',
-                wallet: label,
-                address: address,
-                balance: sats.toDouble(),
-                priceUsd: btcPrice / 100000000,
-                fiatCurrency: fiatCurrency,
-                fiatSymbol: _fiatSymbol(fiatCurrency),
-              ));
-            } catch (_) {
-              // ZBD token expired or not connected — skip silently
-            }
-          }
+        } catch (_) {
+          // skip wallets that fail to load individually
         }
       }
 
       holdings.sort((a, b) => b.fiatValue.compareTo(a.fiatValue));
-      setState(() {
-        _holdings = holdings;
-        _loading = false;
-      });
+      setState(() { _holdings = holdings; _loading = false; });
     } catch (e) {
-      setState(() {
-        _error = 'Failed to load data: $e';
-        _loading = false;
-      });
+      setState(() { _error = 'Failed to load data: $e'; _loading = false; });
     }
   }
 
-  String _coinIcon(String ticker) {
-    switch (ticker) {
-      case 'XNO': return 'assets/icons/nano.png';
-      case 'ETH': return 'assets/icons/ethereum.png';
-      case 'SATS': return 'assets/icons/sats.png';
-      default: return '';
+  Widget _coinIcon(String ticker) {
+    final adapter = CoinRegistry.byTicker(ticker);
+    if (adapter != null) {
+      return CircleAvatar(
+        backgroundColor: const Color(0xFF2A2A4A),
+        backgroundImage: AssetImage(adapter.iconPath),
+      );
     }
+    return CircleAvatar(
+      backgroundColor: const Color(0xFF2A2A4A),
+      child: Text(
+        ticker.isNotEmpty ? ticker[0] : '?',
+        style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold),
+      ),
+    );
   }
 
   @override
@@ -128,19 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: MeldrinoAppBar(onRefresh: _loadData, showRefresh: true),
       body: _loading
           ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Fetching balances...'),
-                ],
-              ),
-            )
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Fetching balances...'),
+              ]))
           : _error != null
-              ? Center(
-                  child: Text(_error!,
-                      style: const TextStyle(color: Colors.redAccent)))
+              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
               : _holdings.isEmpty
                   ? const Center(child: Text('No wallets added yet'))
                   : ListView.separated(
@@ -150,28 +122,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Divider(height: 1, color: Color(0xFF2A2A4A)),
                       itemBuilder: (context, index) {
                         final coin = _holdings[index];
-                        final iconPath = _coinIcon(coin.ticker);
+                        final dp = CoinRegistry.byTicker(coin.ticker)?.decimalPlaces ?? 4;
                         return ListTile(
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => CoinDetailScreen(holding: coin),
-                            ),
+                                builder: (_) => CoinDetailScreen(holding: coin)),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
-                          leading: CircleAvatar(
-                            backgroundColor: const Color(0xFF2A2A4A),
-                            backgroundImage: iconPath.isNotEmpty
-                                ? AssetImage(iconPath)
-                                : null,
-                            child: iconPath.isEmpty
-                                ? Text(coin.ticker[0],
-                                    style: const TextStyle(
-                                        color: Colors.tealAccent,
-                                        fontWeight: FontWeight.bold))
-                                : null,
-                          ),
+                          leading: _coinIcon(coin.ticker),
                           title: Text(coin.name,
                               style: const TextStyle(
                                   fontWeight: FontWeight.w600, fontSize: 16)),
@@ -186,10 +146,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               Text(
                                   '${coin.fiatSymbol}${coin.fiatValue.toStringAsFixed(2)}',
                                   style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16)),
+                                      fontWeight: FontWeight.bold, fontSize: 16)),
                               Text(
-                                  '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
+                                  '${coin.balance.toStringAsFixed(dp)} ${coin.ticker}',
                                   style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
                                       fontSize: 13)),
