@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
 import 'nano_service.dart';
 import 'eth_service.dart';
+import 'zbd_service.dart';
 import 'price_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
@@ -33,16 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String _coinIcon(String ticker) {
-    switch (ticker) {
-      case 'XNO': return 'assets/icons/nano.png';
-      case 'ETH': return 'assets/icons/ethereum.png';
-      case 'BTC': return 'assets/icons/bitcoin.png';
-      case 'BTC Lightning': return 'assets/icons/bitcoin.png';
-      default: return '';
-    }
-  }
-
   Future<void> _loadData() async {
     setState(() {
       _loading = true;
@@ -55,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final prices = await PriceService.getPrices(fiatCurrency);
       final xnoPrice = prices['xno'] ?? 0;
       final ethPrice = prices['eth'] ?? 0;
+      final btcPrice = prices['btc'] ?? 0;
       final List<CoinHolding> holdings = [];
 
       for (final w in wallets) {
@@ -87,6 +79,24 @@ class _HomeScreenState extends State<HomeScreen> {
             fiatCurrency: fiatCurrency,
             fiatSymbol: _fiatSymbol(fiatCurrency),
           ));
+        } else if (coin.contains('Satoshi')) {
+          if (address == 'zbd') {
+            try {
+              final sats = await ZbdService.getBalanceSats();
+              holdings.add(CoinHolding(
+                name: 'Bitcoin (Lightning)',
+                ticker: 'SATS',
+                wallet: label,
+                address: address,
+                balance: sats.toDouble(),
+                priceUsd: btcPrice / 100000000,
+                fiatCurrency: fiatCurrency,
+                fiatSymbol: _fiatSymbol(fiatCurrency),
+              ));
+            } catch (_) {
+              // ZBD token expired or not connected — skip silently
+            }
+          }
         }
       }
 
@@ -100,6 +110,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _error = 'Failed to load data: $e';
         _loading = false;
       });
+    }
+  }
+
+  String _coinIcon(String ticker) {
+    switch (ticker) {
+      case 'XNO': return 'assets/icons/nano.png';
+      case 'ETH': return 'assets/icons/ethereum.png';
+      case 'SATS': return 'assets/icons/sats.png';
+      default: return '';
     }
   }
 
@@ -136,34 +155,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  CoinDetailScreen(holding: coin),
+                              builder: (_) => CoinDetailScreen(holding: coin),
                             ),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           leading: CircleAvatar(
                             backgroundColor: const Color(0xFF2A2A4A),
-                            child: iconPath.isNotEmpty
-                                ? ClipOval(
-                                    child: Image.asset(
-                                      iconPath,
-                                      width: 36,
-                                      height: 36,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                : Text(
-                                    coin.ticker[0],
+                            backgroundImage: iconPath.isNotEmpty
+                                ? AssetImage(iconPath)
+                                : null,
+                            child: iconPath.isEmpty
+                                ? Text(coin.ticker[0],
                                     style: const TextStyle(
                                         color: Colors.tealAccent,
-                                        fontWeight: FontWeight.bold),
-                                  ),
+                                        fontWeight: FontWeight.bold))
+                                : null,
                           ),
                           title: Text(coin.name,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16)),
+                                  fontWeight: FontWeight.w600, fontSize: 16)),
                           subtitle: Text(coin.wallet,
                               style: TextStyle(
                                   color: Colors.white.withOpacity(0.5),
