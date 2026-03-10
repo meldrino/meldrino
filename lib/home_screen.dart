@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'coin_holding.dart';
 import 'nano_service.dart';
+import 'eth_service.dart';
 import 'price_service.dart';
 import 'app_bar.dart';
 import 'coin_detail_screen.dart';
-import 'zbd_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +33,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  String _coinIcon(String ticker) {
+    switch (ticker) {
+      case 'XNO': return 'assets/icons/nano.png';
+      case 'ETH': return 'assets/icons/ethereum.png';
+      case 'BTC': return 'assets/icons/bitcoin.png';
+      case 'BTC Lightning': return 'assets/icons/bitcoin.png';
+      default: return '';
+    }
+  }
+
   Future<void> _loadData() async {
     setState(() {
       _loading = true;
@@ -44,18 +54,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final fiatCurrency = prefs.getString('fiatCurrency') ?? 'USD';
       final prices = await PriceService.getPrices(fiatCurrency);
       final xnoPrice = prices['xno'] ?? 0;
-      final btcPrice = prices['btc'] ?? 0;
+      final ethPrice = prices['eth'] ?? 0;
       final List<CoinHolding> holdings = [];
 
-      // Non-custodial wallets
       for (final w in wallets) {
         final parts = w.split('|');
         final coin = parts[0];
         final label = parts[1].isNotEmpty ? parts[1] : parts[0];
         final address = parts[2];
-
-        // Bitcoin Lightning is handled separately via ZBD JWT token
-        if (coin.contains('Bitcoin Lightning')) continue;
 
         if (coin.contains('Nano')) {
           final balance = await NanoService.getBalance(address);
@@ -69,29 +75,18 @@ class _HomeScreenState extends State<HomeScreen> {
             fiatCurrency: fiatCurrency,
             fiatSymbol: _fiatSymbol(fiatCurrency),
           ));
-        }
-      }
-
-      // ZBD custodial wallet
-      final zbdToken = await ZbdService.getStoredToken();
-      print('[HOME] ZBD token check: ${zbdToken != null ? "TOKEN FOUND (${zbdToken.substring(0, 10)}...)" : "NO TOKEN"}');
-      if (zbdToken != null) {
-        try {
-          final zbdSats = await ZbdService.getBalanceSats();
-          final zbdBtc = zbdSats / 100000000;
+        } else if (coin.contains('Ethereum')) {
+          final balance = await EthService.getBalance(address);
           holdings.add(CoinHolding(
-            name: 'Bitcoin Lightning',
-            ticker: 'BTC',
-            wallet: 'ZBD',
-            address: 'zbd',
-            balance: zbdBtc,
-            priceUsd: btcPrice,
+            name: 'Ethereum',
+            ticker: 'ETH',
+            wallet: label,
+            address: address,
+            balance: balance,
+            priceUsd: ethPrice,
             fiatCurrency: fiatCurrency,
             fiatSymbol: _fiatSymbol(fiatCurrency),
           ));
-        } catch (e) {
-          // ZBD token may be expired — just skip it silently
-          print('[HOME] ZBD balance fetch failed: $e');
         }
       }
 
@@ -136,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Divider(height: 1, color: Color(0xFF2A2A4A)),
                       itemBuilder: (context, index) {
                         final coin = _holdings[index];
+                        final iconPath = _coinIcon(coin.ticker);
                         return ListTile(
                           onTap: () => Navigator.push(
                             context,
@@ -148,12 +144,21 @@ class _HomeScreenState extends State<HomeScreen> {
                               horizontal: 16, vertical: 8),
                           leading: CircleAvatar(
                             backgroundColor: const Color(0xFF2A2A4A),
-                            child: Text(
-                              coin.ticker == 'BTC' ? '₿' : 'N',
-                              style: const TextStyle(
-                                  color: Colors.tealAccent,
-                                  fontWeight: FontWeight.bold),
-                            ),
+                            child: iconPath.isNotEmpty
+                                ? ClipOval(
+                                    child: Image.asset(
+                                      iconPath,
+                                      width: 36,
+                                      height: 36,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                : Text(
+                                    coin.ticker[0],
+                                    style: const TextStyle(
+                                        color: Colors.tealAccent,
+                                        fontWeight: FontWeight.bold),
+                                  ),
                           ),
                           title: Text(coin.name,
                               style: const TextStyle(
@@ -173,9 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16)),
                               Text(
-                                  coin.ticker == 'BTC'
-                                      ? '${(coin.balance * 100000000).toStringAsFixed(0)} sats'
-                                      : '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
+                                  '${coin.balance.toStringAsFixed(4)} ${coin.ticker}',
                                   style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
                                       fontSize: 13)),
