@@ -78,12 +78,9 @@ class ZbdService {
   static Future<List<Map<String, dynamic>>> getTransactions({int count = 5}) async {
     try {
       final data = await _get('$_baseUrl/transactions?limit=$count');
-      final result = data['data'];
-      if (result is List) {
-        return result.cast<Map<String, dynamic>>();
-      }
-      if (result is Map && result['transactions'] is List) {
-        return (result['transactions'] as List).cast<Map<String, dynamic>>();
+      final results = data['data']?['results'];
+      if (results is List) {
+        return results.cast<Map<String, dynamic>>();
       }
     } catch (_) {}
     return [];

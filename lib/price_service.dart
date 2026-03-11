@@ -10,11 +10,11 @@ class PriceService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return {
-        'xno': (data['nano']?[currency] as num?)?.toDouble() ?? 0,
-        'eth': (data['ethereum']?[currency] as num?)?.toDouble() ?? 0,
-        'btc': (data['bitcoin']?[currency] as num?)?.toDouble() ?? 0,
+        'nano': (data['nano']?[currency] as num? ?? 0).toDouble(),
+        'ethereum': (data['ethereum']?[currency] as num? ?? 0).toDouble(),
+        'bitcoin': (data['bitcoin']?[currency] as num? ?? 0).toDouble(),
       };
     }
-    return {'xno': 0, 'eth': 0, 'btc': 0};
+    return {'nano': 0, 'ethereum': 0, 'bitcoin': 0};
   }
 }

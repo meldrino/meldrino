@@ -5,12 +5,11 @@ class ZbdAdapter extends CoinAdapter {
   @override String get ticker => 'SATS';
   @override String get name => 'Satoshi';
   @override String get iconPath => 'assets/icons/sats.png';
-  @override String get coingeckoId => 'bitcoin'; // price comes from BTC
+  @override String get coingeckoId => 'bitcoin';
   @override bool get isCustodial => true;
   @override String get addressLabel => 'ZBD Username';
   @override int get decimalPlaces => 0;
 
-  /// SATS price = BTC price / 100,000,000
   @override
   double adjustPrice(double rawCoingeckoPrice) => rawCoingeckoPrice / 100000000;
 
@@ -28,29 +27,33 @@ class ZbdAdapter extends CoinAdapter {
   Future<List<TxRecord>> getHistory(String address, {int count = 5}) async {
     final raw = await ZbdService.getTransactions(count: count);
     return raw.map((tx) {
-      final type = (tx['type'] ?? tx['transactionType'] ?? '').toString().toLowerCase();
-      final isReceive = type.contains('receive') ||
-          type.contains('credit') ||
-          type.contains('in');
+      // flow is TRANSACTION_FLOW_CREDIT (in) or TRANSACTION_FLOW_DEBIT (out)
+      final flow = (tx['flow'] ?? '').toString();
+      final isReceive = flow == 'TRANSACTION_FLOW_CREDIT';
+
+      // amount is in msats
       double amount = 0;
       try {
-        final msats = int.parse(
-            (tx['amount'] ?? tx['msatoshi'] ?? tx['value'] ?? '0').toString());
+        final msats = int.parse(tx['amount'].toString());
         amount = msats / 1000;
       } catch (_) {}
-      final timeRaw = tx['createdAt'] ?? tx['timestamp'] ?? tx['date'] ?? '';
-      final time = _fmt(timeRaw.toString());
-      final label = (tx['description'] ?? tx['memo'] ?? tx['note'])?.toString();
-      return TxRecord(isReceive: isReceive, amount: amount, time: time, label: label);
+
+      final time = _fmt(tx['createdAt']?.toString() ?? '');
+      final label = tx['description']?.toString();
+
+      return TxRecord(
+        isReceive: isReceive,
+        amount: amount,
+        time: time,
+        label: label,
+      );
     }).toList();
   }
 
   String _fmt(String ts) {
     if (ts.isEmpty) return '';
     try {
-      final dt = ts.contains('T')
-          ? DateTime.parse(ts)
-          : DateTime.fromMillisecondsSinceEpoch(int.parse(ts));
+      final dt = DateTime.parse(ts).toLocal();
       return '${dt.day}/${dt.month}/${dt.year} '
           '${dt.hour.toString().padLeft(2, '0')}:'
           '${dt.minute.toString().padLeft(2, '0')}';
