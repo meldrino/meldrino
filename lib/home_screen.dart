@@ -132,7 +132,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           leading: _coinIcon(coin.ticker),
-                          title: Text(coin.name,
+                          // Coin name with ticker in brackets — generic via adapter.ticker
+                          title: Text('${coin.name} (${coin.ticker})',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w600, fontSize: 16)),
                           subtitle: Text(coin.wallet,

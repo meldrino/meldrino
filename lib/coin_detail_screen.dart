@@ -35,7 +35,9 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
       // Use rawAddress for API calls (e.g. 'zbd' sentinel), not the display address
       final history = await adapter.getHistory(
           widget.holding.rawAddress, count: count);
-      setState(() { _history = history; _loadingHistory = false; });
+      // Always cap to requested count client-side (some APIs ignore the limit param)
+      final capped = history.length > count ? history.sublist(0, count) : history;
+      setState(() { _history = capped; _loadingHistory = false; });
     } catch (e) {
       setState(() { _historyError = e.toString(); _loadingHistory = false; });
     }
@@ -57,7 +59,7 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── Balance card ──────────────────────────────────────────────
+          // ── Balance card ────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -89,7 +91,7 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ── Address / identifier card ─────────────────────────────────
+          // ── Address / identifier card ────────────────────────────────────
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -131,9 +133,15 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+
+          // ── NFT button ───────────────────────────────────────────────────
+          // Placeholder — will search / display NFTs in a future session.
+          // Text changes once NFT data is available for this chain.
+          _NftPlaceholderButton(ticker: holding.ticker),
           const SizedBox(height: 24),
 
-          // ── Transaction history ───────────────────────────────────────
+          // ── Transaction history ──────────────────────────────────────────
           const Text('Recent Transactions',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
@@ -211,6 +219,51 @@ class _CoinDetailScreenState extends State<CoinDetailScreen> {
               ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// NFT placeholder button. Shows different text depending on whether NFTs
+/// have been found for this chain. Tapping navigates to the NFT screen
+/// (not yet built — shows a snackbar for now).
+class _NftPlaceholderButton extends StatelessWidget {
+  final String ticker;
+  const _NftPlaceholderButton({required this.ticker});
+
+  // In a future session this will check a real NFT cache.
+  // For now it always returns false (no NFTs known).
+  bool get _nftsFound => false;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('NFT support coming soon')),
+          );
+        },
+        icon: Icon(
+          _nftsFound ? Icons.image : Icons.image_search_outlined,
+          size: 18,
+        ),
+        label: Text(
+          _nftsFound
+              ? 'NFTs found on this blockchain'
+              : 'No NFTs found on this blockchain',
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _nftsFound ? Colors.tealAccent : Colors.white54,
+          side: BorderSide(
+              color: _nftsFound
+                  ? Colors.tealAccent
+                  : Colors.white24),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
     );
   }

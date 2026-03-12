@@ -20,11 +20,20 @@ class MeldrinoAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       automaticallyImplyLeading: false,
-      title: const Text(
-        'Meldrino',
-        style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Text(
+            'Meldrino',
+            style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 18),
+          ),
+          Text(
+            'not another wallet',
+            style: TextStyle(fontSize: 10, color: Colors.white54, letterSpacing: 0.5),
+          ),
+        ],
       ),
-      // Note: title is NOT tappable — use the home icon instead
       actions: [
         if (showRefresh)
           IconButton(
@@ -40,6 +49,16 @@ class MeldrinoAppBar extends StatelessWidget implements PreferredSizeWidget {
             MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
           ),
+        ),
+        // NFT placeholder — will link to NFT screen in a future session
+        IconButton(
+          icon: const Icon(Icons.image_outlined),
+          tooltip: 'NFTs (coming soon)',
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('NFT support coming soon')),
+            );
+          },
         ),
         IconButton(
           icon: const Icon(Icons.account_balance_wallet_outlined),
