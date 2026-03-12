@@ -2,6 +2,7 @@ import 'coin_adapter.dart';
 import 'adapters/nano_adapter.dart';
 import 'adapters/eth_adapter.dart';
 import 'adapters/zbd_adapter.dart';
+import 'adapters/polygon_adapter.dart';
 
 /// The single place to register supported coins.
 /// To add a new coin: create an adapter file, add one line here. Done.
@@ -10,6 +11,7 @@ class CoinRegistry {
     NanoAdapter(),
     EthAdapter(),
     ZbdAdapter(),
+    PolygonAdapter(),
   ];
 
   /// All registered coin adapters.
