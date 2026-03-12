@@ -5,7 +5,7 @@ class PolygonAdapter extends CoinAdapter {
   @override String get ticker => 'MATIC';
   @override String get name => 'Polygon';
   @override String get iconPath => 'assets/icons/polygon.png';
-  @override String get coingeckoId => 'matic-network';
+  @override String get coingeckoId => 'polygon-ecosystem-token';
   @override int get decimalPlaces => 6;
 
   @override
